@@ -10,7 +10,7 @@ import java.time.ZoneId
 import kotlin.math.sin
 import kotlin.random.Random
 
-const val DEMO_EMAIL = "demo@meowstache.app"
+const val DEMO_EMAIL = "demo@example.com"
 
 private data class DemoCat(val id: String, val name: String, val lbs: Double, val visits: IntRange, val minutes: ClosedFloatingPointRange<Double>)
 

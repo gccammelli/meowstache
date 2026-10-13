@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Backup
@@ -202,6 +203,7 @@ fun AccountScreen(nav: NavHostController) {
             }
             Group("Support", W.Red) {
                 ListRow("Meowstache Privacy", "What this app stores and sends", { privacy = true }, icon = Icons.Filled.PrivacyTip)
+                ListRow("Email Meowstache", "meowstache.app@gmail.com", { ctx.openUrl("mailto:meowstache.app@gmail.com") }, icon = Icons.Filled.Email, divider = true)
                 ListRow("Report a Meowstache Issue", null, { ctx.openUrl("https://github.com/gccammelli/meowstache/issues") }, icon = Icons.Filled.BugReport, divider = true)
                 ListRow("Litter-Robot Support", "The manufacturer's help and contact page", { ctx.openUrl("https://www.litter-robot.com/support/#contact-us") }, icon = Icons.Filled.SupportAgent, divider = true)
                 ListRow("Litter-Robot FAQ", "The manufacturer's FAQ", { ctx.openUrl("https://www.litter-robot.com/faq.html") }, icon = Icons.AutoMirrored.Filled.Help, divider = true)
