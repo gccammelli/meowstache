@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+
+# Local dev notes and AI-assistant config (never published)
+CLAUDE.md
+.claude/

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older. History and settings only; the login tokens ("auth" prefs) stay on the device. -->
+<full-backup-content>
+    <include domain="file" path="history2.json" />
+    <include domain="sharedpref" path="settings.xml" />
+</full-backup-content>

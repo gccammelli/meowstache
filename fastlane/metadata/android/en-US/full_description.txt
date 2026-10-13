@@ -1,0 +1,13 @@
+<p>Meowstache is an independent companion app for the <b>Litter-Robot 4</b>. Your cat, your robot, your data.</p>
+<p><b>Features</b></p>
+<ul>
+<li><b>Full history</b>: week, month, year and all-time charts for weight, visits and cleaning cycles, kept on your phone so it outlives the server's retention.</li>
+<li><b>Pet alerts</b>: no litter box visit in N days, too many visits in 24 hours, target weight crossed, unusual patterns, and a daily recap.</li>
+<li><b>Insights</b>: daily recap, visit duration, time of visit and pattern detection, computed on your phone.</li>
+<li><b>Robot status and controls</b>: waste and litter levels, activity log, lights, cycle delay, panel lock and more.</li>
+<li><b>Robot notifications</b>: drawer full, low litter, cycle finished or interrupted, errors, offline robot, firmware updates.</li>
+<li><b>Backup and restore</b> of your full history to a file.</li>
+<li><b>Demo mode</b>: try the app with a made-up robot and cats, no account needed.</li>
+</ul>
+<p><b>Privacy</b>: you sign in with your Litter-Robot account. Your password goes straight to the official login server and is never stored; the login token is encrypted with the Android Keystore. No analytics, no ads, no third-party servers.</p>
+<p><b>Please note</b>: Meowstache is not affiliated with or endorsed by the manufacturer, and it doesn't replace the official app (setup and some settings still need it). Only the Litter-Robot 4 is supported. The app depends on the manufacturer's proprietary cloud service. It is provided "as is", without warranty of any kind.</p>

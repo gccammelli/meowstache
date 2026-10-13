@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Meowstache" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFF1F1F1</item>
+        <item name="android:statusBarColor">#FFFFFFFF</item>
+        <item name="android:navigationBarColor">#FFF1F1F1</item>
+        <item name="android:windowSplashScreenBackground">#FFF1F1F1</item>
+    </style>
+</resources>

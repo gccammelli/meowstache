@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+. History and settings only; the login tokens ("auth" prefs) stay on the device. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="history2.json" />
+        <include domain="sharedpref" path="settings.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="history2.json" />
+        <include domain="sharedpref" path="settings.xml" />
+    </device-transfer>
+</data-extraction-rules>
