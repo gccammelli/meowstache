@@ -45,7 +45,10 @@ jobs:
 
       - name: Name the APK
         if: startsWith(github.ref, 'refs/tags/v')
-        run: cp app/build/outputs/apk/release/app-release.apk "meowstache-${GITHUB_REF_NAME}.apk"
+        # A fixed name too, so releases/latest/download/meowstache.apk always links the newest version.
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "meowstache-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk meowstache.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -58,5 +61,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: meowstache-${{ github.ref_name }}.apk
+          files: |
+            meowstache-${{ github.ref_name }}.apk
+            meowstache.apk
           generate_release_notes: true
