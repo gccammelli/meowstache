@@ -130,7 +130,8 @@ private fun messageIcon(title: String) = when {
 // ---------- Account ----------
 
 private const val COFFEE = "https://buymeacoffee.com/meowstache"
-private const val RELEASE_NOTES = "https://github.com/gccammelli/meowstache/commits/main"
+/** This version's release page; previews (e.g. "1.1.0-beta") have no tag of their own, so they get the releases list. */
+private fun releaseNotes(version: String) = "https://github.com/gccammelli/meowstache/releases" + if ('-' in version) "" else "/tag/v$version"
 
 @Composable
 fun AccountScreen(nav: NavHostController) {
@@ -166,7 +167,7 @@ fun AccountScreen(nav: NavHostController) {
                 ListRow("Region", null, { nav.navigate("region") }, icon = Icons.Filled.Place, divider = true)
                 ListRow("App Version", null, { nav.navigate("about") }, icon = Icons.Filled.Pets, divider = true)
                 ListRow("Firmware Updates", null, { nav.navigate("firmware") }, icon = Icons.Filled.SystemUpdate, divider = true)
-                ListRow("Release Notes", null, { ctx.openUrl(RELEASE_NOTES) }, icon = Icons.Filled.Edit, divider = true)
+                ListRow("Release Notes", null, { ctx.openUrl(releaseNotes(ctx.appVersion)) }, icon = Icons.Filled.Edit, divider = true)
                 ListRow("Measurement Units", null, { nav.navigate("units") }, icon = Icons.Filled.Straighten, divider = true)
                 ListRow("Back up history", "Save every weighing and setting to a file", {
                     ctx.saveFile("meowstache-${LocalDate.now()}.json", Repo.exportBackup()) { e -> toast(if (e == null) "History backed up" else "Backup failed: ${e.message}") }
@@ -245,7 +246,7 @@ fun AboutScreen(nav: NavHostController) = Screen({ BackTopBar("App Version", { n
                 Text("Buy me a coffee", color = W.Accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.clickable { ctx.openUrl(COFFEE) }.padding(top = 16.dp))
                 Text("Release Notes", color = W.Accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable { ctx.openUrl(RELEASE_NOTES) }.padding(vertical = 16.dp))
+                    modifier = Modifier.clickable { ctx.openUrl(releaseNotes(ctx.appVersion)) }.padding(vertical = 16.dp))
             }
         }
         Text("An unofficial companion app for the Litter-Robot 4 that keeps your pets' full history and adds pet alerts. It doesn't replace the official app and isn't affiliated with its maker.",
