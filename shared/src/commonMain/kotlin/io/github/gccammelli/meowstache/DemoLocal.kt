@@ -51,7 +51,7 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
         val devs = devices.indices.map { d ->
             ent(d, "sensor", "waste_drawer_level", "Waste Drawer Level", if (d == 0) "58" else "31", "%")
             ent(d, "sensor", "litter_level", "Litter Level", if (d == 0) "86" else "92", "%")
-            ent(d, "sensor", "hopper_status", "Hopper Status", "Ready")
+            ent(d, "sensor", "hopper_status", "Hopper Status", if (d == 0) "Ready" else "Disabled")
             ent(d, "sensor", "fault", "Fault", "None")
             ent(d, "sensor", "power_type", "Power Type", "AC")
             ent(d, "binary_sensor", "waste_drawer_full", "Waste Drawer Full", "off")
@@ -71,9 +71,10 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
             listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday").forEach { day ->
                 val o = day.lowercase()
                 val weekday = day !in setOf("Saturday", "Sunday")
-                ent(d, "switch", "${o}_sleep_schedule", "$day Sleep Schedule", if (d == 0 && weekday) "on" else "off")
-                ent(d, "time", "${o}_sleep_time", "$day Sleep Time", "23:00:00")
-                ent(d, "time", "${o}_wake_time", "$day Wake Time", "06:30:00")
+                // Bobbie keeps the firmware's defaults: the sleep schedule entities are disabled in Home Assistant.
+                listOf(ent(d, "switch", "${o}_sleep_schedule", "$day Sleep Schedule", if (d == 0 && weekday) "on" else "off"),
+                    ent(d, "time", "${o}_sleep_time", "$day Sleep Time", "23:00:00"),
+                    ent(d, "time", "${o}_wake_time", "$day Wake Time", "06:30:00")).forEach { it.enabled = d == 0 }
             }
             val slots = (1..4).map { n ->
                 val cat = cats[d].getOrNull(n - 1)?.first
@@ -164,8 +165,13 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
         val e = ents[data.s("entity_id")] ?: throw ApiException("Unknown entity")
         val t = nowMs()
         when ("$domain.$service") {
-            "switch.turn_on" -> e.points += HaPoint(t, "on")
-            "switch.turn_off" -> e.points += HaPoint(t, "off")
+            "switch.turn_on", "switch.turn_off" -> {
+                val on = service == "turn_on"
+                e.points += HaPoint(t, if (on) "on" else "off")
+                // The firmware's Hopper Status follows the hopper switch.
+                if (e.id.contains("_hopper")) ents[e.id.replace("switch.", "sensor.").replace("_hopper", "_hopper_status")]
+                    ?.points?.add(HaPoint(t, if (on) "Ready" else "Disabled"))
+            }
             "select.select_option" -> e.points += HaPoint(t, data.s("option")!!)
             "time.set_value" -> e.points += HaPoint(t, data.s("time")!!)
             "number.set_value" -> {
@@ -196,10 +202,21 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
                 c.s("name")?.let { e.custom = it }
                 if (c.containsKey("disabled_by") && !e.enabled) pendingEnable += e.id
             }
+            "config/device_registry/list" -> return@map buildJsonArray {
+                devices.forEach { (id, name) ->
+                    add(buildJsonObject {
+                        put("id", id); put("name", "Litter Robot 4"); put("name_by_user", name); put("model", "Litter Robot 4")
+                        put("manufacturer", "Joseph DiGiovanni"); put("sw_version", "2026.10.0 (ESPHome 2026.9.1)")
+                        putJsonArray("config_entries") { add(kotlinx.serialization.json.JsonPrimitive("entry-$id")) }
+                        put("disabled_by", null as String?)
+                    })
+                }
+            }
             "config/entity_registry/list" -> return@map buildJsonArray {
                 ents.values.forEach { e ->
                     add(buildJsonObject {
                         put("entity_id", e.id); put("device_id", owner[e.id]); put("config_entry_id", "entry-${owner[e.id]}")
+                        put("platform", "esphome"); put("original_name", e.label); put("name", e.custom)
                         put("disabled_by", if (e.enabled || e.id in pendingEnable) null else "integration")
                     })
                 }

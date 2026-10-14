@@ -19,4 +19,6 @@ ha/bin/python setup_ha.py http://localhost:8123 > token     # once Home Assistan
 MEOWSTACHE_HA_URL=http://localhost:8123 MEOWSTACHE_HA_TOKEN=$(cat token) ./gradlew :shared:testDebugUnitTest --tests '*LiveHomeAssistant*'
 ```
 
+Add `MEOWSTACHE_HA_USER_TOKEN=<a non-admin user's token>` to also check that a regular Home Assistant user can read and control (registry edits then say they need an admin).
+
 On a phone over USB: `adb reverse tcp:8123 tcp:8123`, then connect to `http://localhost:8123`.

@@ -114,7 +114,14 @@ switch:
     on_turn_off: [text_sensor.template.publish: {id: status, state: "Powered off"}]
     on_turn_on: [text_sensor.template.publish: {id: status, state: "Ready"}]
   - {platform: template, id: control_panel_lockout, name: "Control Panel Lockout", optimistic: true}
-  - {platform: template, id: litter_hopper, name: "Hopper", optimistic: true, restore_mode: RESTORE_DEFAULT_ON}
+  - platform: template
+    id: litter_hopper
+    name: "Hopper"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on: [text_sensor.template.publish: {id: hopper_status_custom, state: "Ready"}]
+    on_turn_off: [text_sensor.template.publish: {id: hopper_status_custom, state: "Disabled"}]
+  - {platform: template, id: sleep_override, name: "Sleep Override", optimistic: true}
   - {platform: template, id: smart_cat_detection, name: "Smart Cat Detection", optimistic: true, restore_mode: RESTORE_DEFAULT_ON}
   - {platform: template, id: auto_cycle, name: "Auto Cycle", optimistic: true, restore_mode: RESTORE_DEFAULT_ON}
   - {platform: template, id: sleep_schedule_sun, name: "Sunday Sleep Schedule", optimistic: true}
@@ -147,7 +154,7 @@ number:
     name: "Clean Cycle Delay"
     unit_of_measurement: min
     min_value: 3
-    max_value: 15
+    max_value: 30
     step: 1
     initial_value: 7
     optimistic: true
@@ -166,6 +173,10 @@ button:
     on_press: [lambda: "id(litter_level).publish_state(0);"]
   - platform: template
     name: "Replace Filter"
+    on_press:
+      - text_sensor.template.publish: {id: status, state: "Filter replacement in progress"}
+      - delay: 5s
+      - text_sensor.template.publish: {id: status, state: "Ready"}
   - platform: template
     name: "Reset"
     on_press: [lambda: "id(waste_drawer_level).publish_state(0);"]

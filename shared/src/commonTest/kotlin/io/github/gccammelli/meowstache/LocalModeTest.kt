@@ -128,6 +128,17 @@ class LocalModeTest {
         val since = nowMs() - day
         var robbie = ha.load(since).robots.first()
         assertTrue(robbie.has("button.empty_litter") && robbie.haState("switch.auto_cycle") == "on")
+        // Bobbie's sleep entities are disabled (as the firmware ships them): known, but not usable.
+        val bobbie = ha.load(since).robots.last()
+        assertTrue("switch.monday_sleep_schedule" in bobbie.haHidden() && !bobbie.has("switch.monday_sleep_schedule"))
+        assertTrue(assertFailsWith<ApiException> { haService(bobbie, "switch.monday_sleep_schedule", "turn_on") }.message!!.contains("disabled"))
+        assertEquals("DISABLED", bobbie.hopperStatus)
+
+        // The diagnostics file has the registry, states, history and the mapping, and no secrets.
+        val diag = json.parseToJsonElement(ha.diagnostics("test")).let { it as kotlinx.serialization.json.JsonObject }
+        assertEquals(2, diag.a("devices").size)
+        assertTrue(diag.a("entities").any { it.s("original_name") == "Cat 1 Weight" && it.s("name") == "Mochi Weight" })
+        assertTrue(diag.a("mapped").first().o("roles")!!.containsKey("sensor.status"))
 
         ha.setSleep(robbie, "Saturday", true, 22 * 60 + 30, 7 * 60 + 15)
         ha.call(robbie, "switch.auto_cycle", "turn_off")
@@ -159,5 +170,28 @@ class LocalModeTest {
         assertEquals("ha-moon", moon.id)
         assertEquals(2, moon.haSlots().size)
         assertTrue(snap.weights.getValue("ha-moon").isNotEmpty())
+    }
+
+    @Test
+    fun litterRobot3Names() {
+        // As the LR3 build (LR3-dev branch) names its entities, from the registry's original names.
+        fun e(id: String, name: String) = buildJsonObject { put("entity_id", id); put("original_name", name) }
+        val dev = buildJsonObject {
+            put("id", "lr3"); put("name", "Old Faithful"); put("model", "Litter Robot 3")
+            put("entities", JsonArray(listOf(e("sensor.lr3_robot_status", "Robot Status"), e("number.lr3_cycle_delay", "Cycle Delay"),
+                e("switch.lr3_panel_lockout", "Panel Lockout"), e("switch.lr3_night_light", "Night Light"), e("button.lr3_manual_cycle", "Manual Cycle"))))
+        }
+        val r = haRobot(dev)
+        val robot = Robot(haRobotJson(r, mapOf(
+            "sensor.lr3_robot_status" to buildJsonObject { put("state", "Cycle paused") },
+            "switch.lr3_night_light" to buildJsonObject { put("state", "on") },
+            "number.lr3_cycle_delay" to buildJsonObject { put("state", "15") },
+        )))
+        assertEquals("Litter-Robot 3", robot.model)
+        assertEquals("Paused", robot.status.first)
+        assertEquals("ON", robot.nightLightMode)
+        assertEquals(15, robot.waitMinutes)
+        assertEquals("switch.lr3_night_light" to "turn_off", haCommand(robot, "nightLightModeOff", null).let { it.third.s("entity_id") to it.second })
+        assertEquals("switch.lr3_panel_lockout", haCommand(robot, "keyPadLockOutOn", null).third.s("entity_id"))
     }
 }

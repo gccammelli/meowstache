@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.foundation.layout.width
 import io.github.gccammelli.meowstache.has
 import io.github.gccammelli.meowstache.haState
+import io.github.gccammelli.meowstache.haHidden
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
@@ -384,7 +385,7 @@ private fun ControlsTab(r: Robot) {
     if (sleep) { if (Repo.localMode && r.has("switch.monday_sleep_schedule")) LocalSleepDialog(r) { sleep = false } else SleepDialog(r) { sleep = false } }
     val robotFilter = r.has("button.replace_filter")
     if (filter) ConfirmDialog("Replace Filter", "Mark the carbon filter as replaced today? A new filter every 3 months is recommended. " +
-        if (robotFilter) "This also resets the robot's own filter counter." else "This is tracked on this phone; the robot's own filter reminder isn't reachable through the public API.", "Replaced",
+        if (robotFilter) "This also starts the robot's own filter replacement mode (the firmware's Replace Filter)." else "This is tracked on this phone; the robot's own filter reminder isn't reachable through the public API.", "Replaced",
         { Repo.updateLocal { it.copy(filterAt = it.filterAt + (r.serial to nowMs())) }; if (robotFilter) run("replaceFilter") }, { filter = false })
 }
 
@@ -443,7 +444,24 @@ fun DeviceSettingsScreen(nav: NavHostController, serial: String) {
                 Triple("switch.smart_cat_detection", "Smart Cat Detection", "Only counts a visit when both the weight and curtain sensors see a cat: fewer false cycles."),
                 Triple("switch.auto_cycle", "Auto Cycle", "Off: the robot doesn't clean after a visit; start cycles yourself (for jumpy cats or kittens)."),
                 Triple("switch.odor_control", "Odor Control", "Cycles sooner after a poop (WasteSense sensor)."),
+                Triple("switch.sleep_override", "Sleep Override", "Keeps the robot asleep until turned off. It sets every day's schedule to sleep; turning it off switches all days off, so set your schedule again."),
             ).filter { r.has(it.first) }
+            // The firmware ships these disabled in Home Assistant; say what to enable instead of hiding the feature.
+            val hidden = r.haHidden()
+            val missing = listOfNotNull(
+                "sleep schedule (the 7 \"… Sleep Schedule\" switches and 14 sleep/wake times)".takeIf { hidden.any { "sleep_schedule" in it || "sleep_time" in it || "wake_time" in it } },
+                "LitterHopper on/off (\"Hopper\")".takeIf { "switch.hopper" in hidden },
+                "Auto Cycle".takeIf { "switch.auto_cycle" in hidden },
+            )
+            if (Repo.localMode && missing.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                WCard(Modifier.fillMaxWidth()) {
+                    Text("More controls in Home Assistant", color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("These are disabled in Home Assistant, so Meowstache can't use them yet: ${missing.joinToString("; ")}. " +
+                        "Enable them on the robot's device page (Settings › Devices › ${r.name} › entities not shown), then reopen Meowstache.",
+                        color = W.Text2, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
             if (firmware.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
                 WCard(Modifier.fillMaxWidth()) {
@@ -670,7 +688,8 @@ private fun SleepDialog(r: Robot, onDismiss: () -> Unit) {
                     }
                     Box(Modifier.fillMaxWidth().padding(bottom = 10.dp).height(1.dp).background(W.Line))
                 }
-                Text("Editing the schedule isn't available through the public API yet.", color = W.Muted, fontSize = 12.sp)
+                Text(if (Repo.localMode) "To change the schedule here, enable the robot's sleep schedule entities in Home Assistant (they're disabled by default)."
+                    else "Editing the schedule isn't available through the public API yet.", color = W.Muted, fontSize = 12.sp)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = W.Accent) } })

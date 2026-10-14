@@ -137,6 +137,7 @@ fun AccountScreen(nav: NavHostController) {
     val s = state(); val ctx = LocalPlatform.current
     var login by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
+    var diag by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun toast(t: String) = ctx.toast(t)
     Screen({ BackTopBar("Account", { nav.popBackStack() }) }) {
@@ -171,6 +172,8 @@ fun AccountScreen(nav: NavHostController) {
                 ListRow("Back up history", "Save every weighing and setting to a file", {
                     ctx.saveFile("meowstache-${LocalDate.now()}.json", Repo.exportBackup()) { e -> toast(if (e == null) "History backed up" else "Backup failed: ${e.message}") }
                 }, icon = Icons.Filled.Backup, divider = true)
+                if (Repo.localMode) ListRow("Home Assistant diagnostics", "Save what Meowstache sees, to send with a bug report", { diag = true },
+                    icon = Icons.Filled.BugReport, divider = true)
                 ListRow("Restore history", "Merge a backup file into this phone", {
                     ctx.openFile { r ->
                         r ?: return@openFile
@@ -207,6 +210,18 @@ fun AccountScreen(nav: NavHostController) {
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
         }
     }
+    if (diag) ConfirmDialog("Home Assistant diagnostics",
+        "Saves a file with what Meowstache reads from Home Assistant about your robots: their entities, current values and the last day of history, " +
+            "plus how the app understood them. It includes robot and cat names and weights, but not your token or Home Assistant's address. " +
+            "Send it with a bug report (meowstache.app@gmail.com or GitHub) so we can see what your firmware reports.",
+        "Save file", {
+            val version = ctx.appVersion
+            Repo.launch {
+                runCatching { Repo.haDiagnostics(version) }.fold(
+                    { text -> ctx.saveFile("meowstache-ha-diagnostics-${LocalDate.now()}.json", text) { e -> toast(if (e == null) "Diagnostics saved" else "Couldn't save: ${e.message}") } },
+                    { toast("Couldn't read Home Assistant: ${it.message}") })
+            }
+        }, { diag = false })
     if (privacy && Repo.localMode) ConfirmDialog("Meowstache Privacy",
         "• Local mode only talks to your own Home Assistant, at the address you entered. Nothing is sent to the Litter-Robot servers.\n" +
         "• The access token is kept on this phone, encrypted with a key in the phone's secure hardware, and never backed up.\n" +

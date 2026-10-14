@@ -492,6 +492,7 @@ object Repo {
 
     /** A switch or button of the firmware, e.g. ("switch.auto_cycle", "turn_on"). */
     suspend fun haCall(robot: Robot, role: String, service: String) = local { ha().call(robot, role, service) }
+    suspend fun haDiagnostics(appVersion: String): String = ha().diagnostics(appVersion)
     suspend fun setSleep(robot: Robot, day: String, enabled: Boolean, sleepMin: Int, wakeMin: Int) = local { ha().setSleep(robot, day, enabled, sleepMin, wakeMin) }
     suspend fun setTrackerWeight(pet: Pet, lbs: Double) = local { ha().setTrackerWeight(pet, lbs) }
     suspend fun resetTracker(pet: Pet) = local { ha().resetTracker(pet) }

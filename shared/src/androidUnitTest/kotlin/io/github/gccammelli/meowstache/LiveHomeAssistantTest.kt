@@ -23,6 +23,12 @@ class LiveHomeAssistantTest {
         assertTrue(snap.robots.size == 2)
         assertTrue(snap.pets.map { it.name }.containsAll(listOf("Mochi", "Luna", "Pixel")))
 
+        // The diagnostics export against a real Home Assistant.
+        val diag = ha.diagnostics("live")
+        println("diagnostics ${diag.length} bytes, version " + Regex("\"haVersion\":\"([^\"]+)").find(diag)?.groupValues?.get(1))
+        assertTrue("\"original_name\":\"Cat 1 Weight\"" in diag && System.getenv("MEOWSTACHE_HA_TOKEN")!! !in diag)
+        snap.robots.forEach { println("hidden ${it.name}: ${it.haHidden()} sleep override ${it.has("switch.sleep_override")}") }
+
         // A command goes through Home Assistant to the mock firmware and back.
         val robbie = snap.robots.first { it.name == "Robbie" }
         val target = if (robbie.nightLightMode == "OFF") "nightLightModeAuto" else "nightLightModeOff"
@@ -65,5 +71,21 @@ class LiveHomeAssistantTest {
         ha.resetTracker(zig) // free the slot again
         Thread.sleep(1500)
         assertTrue(ha.load(nowMs() - 60_000L).pets.none { it.name == "Zig" })
+    }
+
+    /** A regular (non-admin) Home Assistant user: reading and controls work, registry edits say they need an admin. */
+    @Test
+    fun nonAdminUser() = runTest(timeout = 2.minutes) {
+        val url = System.getenv("MEOWSTACHE_HA_URL") ?: return@runTest
+        val token = System.getenv("MEOWSTACHE_HA_USER_TOKEN") ?: return@runTest
+        val ha = LocalHa(HaHttp(url, token))
+        val snap = ha.load(nowMs() - 86_400_000L)
+        println("non-admin: robots ${snap.robots.map { it.name }}, pets ${snap.pets.map { it.name }}")
+        assertTrue(snap.robots.size == 2 && snap.pets.isNotEmpty())
+        val robbie = snap.robots.first { it.name == "Robbie" }
+        ha.command(robbie, "nightLightModeAuto", null)
+        val e = runCatching { ha.renameRobot(robbie, "Nope") }.exceptionOrNull()
+        println("non-admin rename: ${e?.message}")
+        assertTrue(e?.message?.contains("administrator") == true)
     }
 }

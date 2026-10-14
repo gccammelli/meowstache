@@ -88,15 +88,6 @@ class HaHttp(url: String, private val token: String) : HaBackend {
     }
 }
 
-/** Every Litter-Robot the ESPHome integration knows, with its entities (one call, via a template). */
-private const val DEVICES_TEMPLATE = """{%- set ns = namespace(d=[]) -%}
-{%- for dev in integration_entities('esphome') | map('device_id') | reject('none') | unique -%}
-{%- if 'Litter Robot' in (device_attr(dev, 'model') or '') -%}
-{%- set ns.d = ns.d + [{'id': dev, 'name': device_attr(dev, 'name_by_user') or device_attr(dev, 'name'), 'model': device_attr(dev, 'model'), 'sw': device_attr(dev, 'sw_version'), 'entry': device_attr(dev, 'config_entries') | list | first, 'entities': device_entities(dev)}] -%}
-{%- endif -%}
-{%- endfor -%}
-{{ ns.d | tojson }}"""
-
 private val DAYS = listOf("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
 
 /** The firmware's entities, keyed "domain.object_id" as Home Assistant names them from the firmware's entity names. */
@@ -107,50 +98,96 @@ private val ROLES = listOf(
     "switch.power", "switch.control_panel_lockout", "switch.hopper",
     "select.night_light_mode", "select.night_light_brightness", "select.panel_brightness",
     "number.clean_cycle_delay", "button.manual_cycle", "button.reset", "button.replace_filter", "button.empty_litter",
-    "switch.smart_cat_detection", "switch.auto_cycle", "switch.odor_control",
+    "switch.smart_cat_detection", "switch.auto_cycle", "switch.odor_control", "switch.sleep_override",
+    // Litter-Robot 3 build (alpha, LR3-dev branch): its own names, used where the LR4 one is missing.
+    "sensor.robot_status", "number.cycle_delay", "switch.panel_lockout", "switch.night_light",
 ) + DAYS.flatMap { listOf("switch.${it}_sleep_schedule", "time.${it}_sleep_time", "time.${it}_wake_time") }
+
+/** LR4 role → the LR3 firmware's entity for the same thing. */
+private val LR3_NAMES = mapOf(
+    "sensor.status" to "sensor.robot_status", "number.clean_cycle_delay" to "number.cycle_delay",
+    "switch.control_panel_lockout" to "switch.panel_lockout",
+)
 
 private val CAT = Regex("""^(sensor|number|button)\.(?:.*_)?cat_(\d+)_([a-z_]+)$""")
 
-/** One cat tracker slot on a robot: its weight and visits sensors, and every entity of the slot (for renaming). */
-data class HaCat(val weight: String? = null, val visits: String? = null, val entities: List<String> = emptyList()) {
-    fun find(prefix: String, suffix: String) = entities.firstOrNull { it.startsWith(prefix) && it.replace(Regex("_\\d+$"), "").endsWith(suffix) }
-}
-
-/** A robot as found in Home Assistant: role → entity id, and cat slot number → its entities. */
-data class HaRobot(val id: String, val name: String, val model: String, val sw: String?, val entry: String?,
-                   val roles: Map<String, String>, val cats: Map<Int, HaCat>)
+/** One cat tracker slot on a robot: its weight and visits sensors, every entity of the slot (for renaming), and the user's name for it. */
+data class HaCat(val weight: String? = null, val visits: String? = null, val entities: List<String> = emptyList(), val name: String? = null)
 
 /**
- * Sorts a device's entities into roles. Home Assistant derives entity ids from the firmware's entity names
- * ("…_waste_drawer_level", "…_cat_1_weight", "_2" for a second robot); the longest matching role wins, so
- * "…_hopper_status" isn't taken for "…_status".
- * shortcut: entity ids the user renamed by hand aren't recognised; fall back to the entity registry's
- * original names (websocket API) if that turns out to be common.
+ * A robot as found in Home Assistant: role → entity id, cat slot number → its entities, and the roles whose
+ * entities exist but are disabled (the firmware ships many hidden: sleep schedule, hopper switch, Auto Cycle…).
+ */
+data class HaRobot(val id: String, val name: String, val model: String, val sw: String?, val entry: String?,
+                   val roles: Map<String, String>, val cats: Map<Int, HaCat>,
+                   val hidden: Set<String> = emptySet(), val disabled: Set<String> = emptySet())
+
+/** "Waste Drawer Level" → "waste_drawer_level", as Home Assistant makes object ids. */
+private fun slug(name: String) = name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
+
+/**
+ * Sorts a device's entities into roles, by the firmware's entity name (the registry's original_name, which user
+ * renames don't touch): domain + slug, e.g. "sensor.waste_drawer_level", "sensor.cat_1_weight". Without an
+ * original name the entity id is used ("…_waste_drawer_level", "_2" for a second robot); the longest matching
+ * role wins, so "…_hopper_status" isn't taken for "…_status".
+ * [device]: id, name, model, sw, entry, entities: entity ids, or registry entries {entity_id, original_name, name, disabled_by}.
  */
 fun haRobot(device: JsonObject): HaRobot {
     val roles = HashMap<String, String>()
     val cats = HashMap<Int, HaCat>()
-    for (e in (device["entities"] as? JsonArray).orEmpty().mapNotNull { it.str() }) {
-        val key = e.replace(Regex("_\\d+$"), "")
+    val hidden = HashSet<String>()
+    val disabled = HashSet<String>()
+    for (el in (device["entities"] as? JsonArray).orEmpty()) {
+        val o = el as? JsonObject
+        val e = o?.s("entity_id") ?: el.str() ?: continue
+        val off = o?.get("disabled_by")?.str() != null
+        if (off) disabled += e
+        val domain = e.substringBefore('.')
+        val key = o?.s("original_name")?.let { "$domain.${slug(it)}" } ?: e.replace(Regex("_\\d+$"), "")
         val m = CAT.find(key)
         if (m != null) {
-            val (domain, n, what) = m.destructured
+            val (d, n, what) = m.destructured
             val c = cats[n.toInt()] ?: HaCat()
+            val isWeight = d == "sensor" && what == "weight"
             cats[n.toInt()] = c.copy(
-                weight = if (domain == "sensor" && what == "weight") e else c.weight,
-                visits = if (domain == "sensor" && what == "visits") e else c.visits,
+                weight = if (isWeight && !off) e else c.weight,
+                visits = if (d == "sensor" && what == "visits" && !off) e else c.visits,
                 entities = c.entities + e,
+                name = if (isWeight) o?.s("name") ?: c.name else c.name,
             )
             continue
         }
-        val domain = key.substringBefore('.')
         val obj = key.substringAfter('.')
         ROLES.filter { it.substringBefore('.') == domain && (obj == it.substringAfter('.') || obj.endsWith("_" + it.substringAfter('.'))) }
-            .maxByOrNull { it.length }?.let { roles.getOrPut(it) { e } }
+            .maxByOrNull { it.length }?.let { role -> if (off) hidden += role else roles.getOrPut(role) { e } }
     }
+    LR3_NAMES.forEach { (lr4, lr3) -> roles[lr3]?.let { roles.getOrPut(lr4) { it } } }
     return HaRobot(device.s("id").orEmpty(), device.s("name") ?: "Litter-Robot", device.s("model") ?: "Litter Robot",
-        device.s("sw"), device.s("entry"), roles, cats)
+        device.s("sw"), device.s("entry"), roles, cats, hidden - roles.keys, disabled)
+}
+
+/**
+ * Every Litter-Robot of the ESPHome integration, from Home Assistant's device and entity registries
+ * (websocket; works with any user's token, unlike templates, and lists disabled entities too).
+ */
+private suspend fun HaBackend.robots(): List<HaRobot> {
+    val (devs, ents) = ws(listOf(
+        buildJsonObject { put("type", "config/device_registry/list") },
+        buildJsonObject { put("type", "config/entity_registry/list") },
+    )).map { (it as JsonArray).map { e -> e.jsonObject } }
+    return robots(devs, ents)
+}
+
+private fun robots(robotsFrom: List<JsonObject>, ents: List<JsonObject>): List<HaRobot> {
+    val devs = robotsFrom
+    val byDevice = ents.filter { it.s("platform") == "esphome" }.groupBy { it.s("device_id") }
+    return devs.filter { "Litter Robot" in (it.s("model") ?: "") && byDevice.containsKey(it.s("id")) && it["disabled_by"]?.str() == null }.map { d ->
+        haRobot(buildJsonObject {
+            put("id", d.s("id")); put("name", d.s("name_by_user") ?: d.s("name")); put("model", d.s("model")); put("sw", d.s("sw_version"))
+            put("entry", (d["config_entries"] as? JsonArray)?.firstOrNull()?.str())
+            put("entities", JsonArray(byDevice.getValue(d.s("id"))))
+        })
+    }
 }
 
 /** lb per unit, for weights Home Assistant may show converted. */
@@ -180,12 +217,15 @@ fun haRobotJson(r: HaRobot, states: Map<String, JsonObject>): JsonObject {
             "Waiting to cycle" -> put("robotStatus", "ROBOT_CAT_DETECT_DELAY")
             "Clean cycle in progress" -> put("robotStatus", "ROBOT_CLEAN")
             "Cycle interrupted" -> { put("robotStatus", "ROBOT_CLEAN"); put("robotCycleState", "CYCLE_STATE_CAT_DETECT") }
+            "Cycle paused" -> { put("robotStatus", "ROBOT_CLEAN"); put("robotCycleState", "CYCLE_STATE_PAUSE") } // LR3
             "Emptying litter" -> put("robotStatus", "ROBOT_EMPTY")
             "Bonnet removed" -> put("robotStatus", "ROBOT_BONNET")
             "Powered off" -> put("robotStatus", "ROBOT_POWER_OFF")
             "Powering on" -> put("robotStatus", "ROBOT_POWER_UP")
             "Powering off" -> put("robotStatus", "ROBOT_POWER_DOWN")
-            else -> put("robotStatus", status) // "Fault detected", "On battery", …: shown as is
+            // The firmware's Fault entity says which fault ("Pinch detected", "Motion detected in waste drawer", …).
+            "Fault detected" -> put("robotStatus", v("sensor.fault")?.takeIf { it != "None" } ?: status)
+            else -> put("robotStatus", status) // "On battery", "WiFi disabled", "Filter replacement in progress", …: shown as is
         }
         v("sensor.waste_drawer_level")?.toDoubleOrNull()?.let { put("DFILevelPercent", it) }
         put("isDFIFull", on("binary_sensor.waste_drawer_full"))
@@ -195,17 +235,20 @@ fun haRobotJson(r: HaRobot, states: Map<String, JsonObject>): JsonObject {
             put("litterLevelState", when { l >= 70 -> "OPTIMAL"; l >= 40 -> "LOW"; else -> "EMPTY" })
         }
         put("isKeypadLockout", on("switch.control_panel_lockout"))
-        v("select.night_light_mode")?.let { put("nightLightMode", it.uppercase()) }
+        (v("select.night_light_mode") ?: v("switch.night_light")?.let { if (it == "on") "On" else "Off" }) // LR3: on/off only
+            ?.let { put("nightLightMode", it.uppercase()) }
         level(v("select.night_light_brightness"))?.let { put("nightLightBrightness", it) }
         level(v("select.panel_brightness"))?.let { put("panelBrightnessHigh", it) }
         v("number.clean_cycle_delay")?.toDoubleOrNull()?.let { put("cleanCycleWaitTime", it.toInt()) }
         v("sensor.clean_cycles")?.toDoubleOrNull()?.let { put("odometerCleanCycles", it.toInt()); put("scoopsSavedCount", it.toInt()) }
-        if (r.roles["switch.hopper"] != null) {
-            val enabled = on("switch.hopper")
-            put("isHopperRemoved", !enabled)
-            put("hopperStatus", when {
-                !enabled -> "DISABLED"; on("binary_sensor.hopper_empty") -> "EMPTY"; else -> "ENABLED"
-            })
+        // The firmware's "Hopper Status": Disabled / Ready / Running / Needs refill / Not connected (no hopper).
+        val hopper = v("sensor.hopper_status")?.takeIf { it != "unknown" && it != "unavailable" }
+            ?: r.roles["switch.hopper"]?.let { if (on("switch.hopper")) "Ready" else "Disabled" }
+        when (hopper) {
+            null, "Not connected" -> {}
+            "Disabled" -> { put("hopperStatus", "DISABLED"); put("isHopperRemoved", true) }
+            "Needs refill" -> put("hopperStatus", "EMPTY")
+            else -> put("hopperStatus", if (on("binary_sensor.hopper_empty")) "EMPTY" else "ENABLED")
         }
         v("sensor.wifi_signal")?.toDoubleOrNull()?.let { put("wifiRssi", it.toInt()) }
         st("sensor.status")?.s("last_updated")?.let { put("lastSeen", it) }
@@ -220,6 +263,7 @@ fun haRobotJson(r: HaRobot, states: Map<String, JsonObject>): JsonObject {
         }
         putJsonObject("haEntities") { r.roles.forEach { (k, e) -> put(k, e) } }
         putJsonObject("haState") { r.roles.forEach { (k, e) -> states[e]?.state()?.let { put(k, it) } } }
+        put("haHidden", JsonArray(r.hidden.sorted().map(::JsonPrimitive)))
         r.entry?.let { put("haEntry", it) }
     }
 }
@@ -303,8 +347,7 @@ data class HaSnapshot(val robots: List<Robot>, val pets: List<Pet>, val weights:
 class LocalHa(val backend: HaBackend) {
     /** Robots, cats and the history since [since] (epoch ms). */
     suspend fun load(since: Long): HaSnapshot {
-        val devices = json.parseToJsonElement(backend.post("/api/template", buildJsonObject { put("template", DEVICES_TEMPLATE) }.toString()))
-            .jsonArray.map { haRobot(it.jsonObject) }
+        val devices = backend.robots()
         val states = json.parseToJsonElement(backend.get("/api/states")).jsonArray.map { it.jsonObject }.associateBy { it.s("entity_id").orEmpty() }
 
         // Cats: tracker slots in use (a weight, or at least one visit), merged across robots by name.
@@ -318,7 +361,7 @@ class LocalHa(val backend: HaBackend) {
             val lbs = w?.state()?.toDoubleOrNull()?.let { toLbs(it, w.attr("unit_of_measurement")) }
             val visits = c.visits?.let { states[it] }?.state()?.toDoubleOrNull() ?: 0.0
             if ((lbs == null || lbs <= 0) && visits <= 0) continue
-            val name = haCatName(w?.attr("friendly_name"), r.name, n)
+            val name = haCatName(c.name ?: w?.attr("friendly_name"), r.name, n)
             val id = haPetId(name)
             slots += Slot(r, n, c, id)
             val old = pets[id]
@@ -403,17 +446,14 @@ class LocalHa(val backend: HaBackend) {
     suspend fun addPet(name: String, lbs: Double, robotIds: Set<String>): List<String> {
         val states = json.parseToJsonElement(backend.get("/api/states")).jsonArray.map { it.jsonObject }.associateBy { it.s("entity_id").orEmpty() }
         fun num(e: String?) = e?.let { states[it]?.state()?.toDoubleOrNull() } ?: 0.0
-        // The registry, unlike templates, also lists the cat entities the firmware ships disabled.
-        val registry = backend.ws(listOf(buildJsonObject { put("type", "config/entity_registry/list") })).first()
-            .let { (it as JsonArray).map { e -> e.jsonObject } }.filter { it.s("device_id") in robotIds }
+        val robots = devices().filter { it.id in robotIds }
+        val disabled = robots.flatMap { it.disabled }.toSet()
         val full = mutableListOf<String>()
-        val chosen = devices().filter { it.id in robotIds }.mapNotNull { d ->
-            val r = haRobot(buildJsonObject { put("id", d.id); put("name", d.name); put("entities", JsonArray(registry.filter { it.s("device_id") == d.id }.map { JsonPrimitive(it.s("entity_id")) })) })
+        val chosen = robots.mapNotNull { r ->
             val free = r.cats.entries.sortedBy { it.key }.firstOrNull { (_, c) -> num(c.weight) <= 0 && num(c.visits) <= 0 }?.key
-            if (free == null) { full += d.name; null } else Triple(d, free, r.cats.getValue(free).entities)
+            if (free == null) { full += r.name; null } else Triple(r, free, r.cats.getValue(free).entities)
         }
         if (chosen.isEmpty()) return full
-        val disabled = registry.filter { it["disabled_by"]?.str() != null }.mapNotNull { it.s("entity_id") }.toSet()
         backend.ws(chosen.flatMap { (_, n, ents) -> ents.map { renameEntity(it, n, name, enable = it in disabled) } })
         val reload = chosen.filter { (_, _, ents) -> ents.any { it in disabled } }
         reload.mapNotNull { it.first.entry }.distinct().forEach { backend.post("/api/config/config_entries/entry/$it/reload", "{}") }
@@ -431,9 +471,45 @@ class LocalHa(val backend: HaBackend) {
         return full
     }
 
-    /** Raw robots (for adding a cat). */
-    suspend fun devices() = json.parseToJsonElement(backend.post("/api/template", buildJsonObject { put("template", DEVICES_TEMPLATE) }.toString()))
-        .jsonArray.map { haRobot(it.jsonObject) }
+    /**
+     * What Meowstache sees, for bug reports from firmware users: Home Assistant's version, each Litter-Robot's
+     * registry entries, current states and the last day of history, and how the app mapped them.
+     * No token or address. It does contain robot and cat names and readings (the user is told).
+     */
+    suspend fun diagnostics(appVersion: String): String {
+        val (devs, ents) = backend.ws(listOf(
+            buildJsonObject { put("type", "config/device_registry/list") },
+            buildJsonObject { put("type", "config/entity_registry/list") },
+        )).map { (it as JsonArray).map { e -> e.jsonObject } }
+        val robots = devs.filter { "Litter Robot" in (it.s("model") ?: "") }
+        val ids = robots.mapNotNull { it.s("id") }.toSet()
+        val mine = ents.filter { it.s("device_id") in ids }
+        val states = json.parseToJsonElement(backend.get("/api/states")).jsonArray.map { it.jsonObject }
+            .filter { st -> mine.any { it.s("entity_id") == st.s("entity_id") } }
+        val enabled = mine.filter { it["disabled_by"]?.str() == null }.mapNotNull { it.s("entity_id") }
+        val day = Instant.fromEpochMilliseconds(nowMs() - 86_400_000L)
+        val history = if (enabled.isEmpty()) JsonArray(emptyList()) else json.parseToJsonElement(backend.get(
+            "/api/history/period/$day?filter_entity_id=${enabled.joinToString(",")}&end_time=${Instant.fromEpochMilliseconds(nowMs())}&minimal_response&no_attributes"))
+        val keep = { o: JsonObject, keys: List<String> -> JsonObject(o.filterKeys { it in keys }) }
+        return buildJsonObject {
+            put("app", "meowstache"); put("appVersion", appVersion); put("kind", "home-assistant-diagnostics")
+            put("haVersion", runCatching { json.parseToJsonElement(backend.get("/api/config")).jsonObject.s("version") }.getOrNull())
+            put("devices", JsonArray(robots.map { keep(it, listOf("id", "name", "name_by_user", "model", "manufacturer", "sw_version", "disabled_by")) }))
+            put("entities", JsonArray(mine.map { keep(it, listOf("entity_id", "device_id", "original_name", "name", "disabled_by", "platform", "entity_category")) }))
+            put("states", JsonArray(states))
+            put("history", history)
+            put("mapped", JsonArray(robots(robotsFrom = robots, ents = mine).map { r ->
+                buildJsonObject {
+                    put("robot", r.name); putJsonObject("roles") { r.roles.forEach { (k, v) -> put(k, v) } }
+                    put("hidden", JsonArray(r.hidden.sorted().map(::JsonPrimitive)))
+                    putJsonObject("cats") { r.cats.forEach { (n, c) -> put("$n", "${c.name ?: "-"} weight=${c.weight} visits=${c.visits}") } }
+                }
+            }))
+        }.toString()
+    }
+
+    /** The robots as Home Assistant's registry has them (for adding a cat). */
+    suspend fun devices() = backend.robots()
 
     suspend fun command(robot: Robot, command: String, value: String?) {
         val (domain, service, data) = haCommand(robot, command, value)
@@ -447,7 +523,8 @@ class LocalHa(val backend: HaBackend) {
  */
 fun haService(robot: Robot, role: String, service: String, vararg extra: Pair<String, Any>): Triple<String, String, JsonObject> {
     val id = robot.raw.o("haEntities")?.s(role)
-        ?: throw ApiException("This robot's firmware has no ${role.substringAfter('.').replace('_', ' ')} control in Home Assistant")
+        ?: throw ApiException(if (role in robot.haHidden()) "The ${role.substringAfter('.').replace('_', ' ')} entity is disabled in Home Assistant: enable it on the robot's device page"
+            else "This robot's firmware has no ${role.substringAfter('.').replace('_', ' ')} control in Home Assistant")
     return Triple(role.substringBefore('.'), service, buildJsonObject {
         put("entity_id", id)
         extra.forEach { (k, v) -> if (v is Number) put(k, v) else put(k, v.toString()) }
@@ -483,8 +560,10 @@ fun haCommand(robot: Robot, command: String, value: String?): Triple<String, Str
         "powerOff" -> call("switch.power", "turn_off")
         "keyPadLockOutOn" -> call("switch.control_panel_lockout", "turn_on")
         "keyPadLockOutOff" -> call("switch.control_panel_lockout", "turn_off")
-        "nightLightModeOn" -> call("select.night_light_mode", "select_option", "option" to "On")
-        "nightLightModeOff" -> call("select.night_light_mode", "select_option", "option" to "Off")
+        "nightLightModeOn" -> if (!robot.has("select.night_light_mode") && robot.has("switch.night_light")) call("switch.night_light", "turn_on")
+            else call("select.night_light_mode", "select_option", "option" to "On")
+        "nightLightModeOff" -> if (!robot.has("select.night_light_mode") && robot.has("switch.night_light")) call("switch.night_light", "turn_off")
+            else call("select.night_light_mode", "select_option", "option" to "Off")
         "nightLightModeAuto" -> call("select.night_light_mode", "select_option", "option" to "Auto")
         "setNightLightValue" -> call("select.night_light_brightness", "select_option", "option" to level(num("nightLightPower")))
         "panelBrightnessLow" -> call("select.panel_brightness", "select_option", "option" to "Low")
@@ -505,3 +584,5 @@ private fun JsonArray?.orEmpty() = this ?: JsonArray(emptyList())
 /** Local mode: whether the robot's firmware has this entity, and its state ("on", "Auto", …). */
 fun Robot.has(role: String) = raw.o("haEntities")?.s(role) != null
 fun Robot.haState(role: String) = raw.o("haState")?.s(role)
+/** Roles whose entities exist but are disabled in Home Assistant. */
+fun Robot.haHidden(): List<String> = (raw["haHidden"] as? JsonArray)?.mapNotNull { it.str() }.orEmpty()
