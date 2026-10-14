@@ -55,8 +55,6 @@ fun MainViewController(): UIViewController {
     Repo.init(iosStorage())
     // CI screenshots: `simctl launch … --demo` skips the intro and opens demo mode (simulators can't be tapped from the command line).
     if ("--demo" in NSProcessInfo.processInfo.arguments) { Repo.acceptIntro(); Repo.startDemo() }
-    UNUserNotificationCenter.currentNotificationCenter()
-        .requestAuthorizationWithOptions(UNAuthorizationOptionAlert or UNAuthorizationOptionSound or UNAuthorizationOptionBadge) { _, _ -> }
     NSNotificationCenter.defaultCenter.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
         if (Repo.signedIn) Repo.refreshAsync()
     }
@@ -145,7 +143,11 @@ private class IosPlatformUi : PlatformUi {
     }
 
     // shortcut: no background checks on iOS yet (BGTaskScheduler), so alerts are only checked while the app is open.
-    override fun scheduleAlerts() {}
+    // Asks for notification permission here, when the user turns an alert on, rather than at launch.
+    override fun scheduleAlerts() {
+        UNUserNotificationCenter.currentNotificationCenter()
+            .requestAuthorizationWithOptions(UNAuthorizationOptionAlert or UNAuthorizationOptionSound or UNAuthorizationOptionBadge) { _, _ -> }
+    }
 
     override fun notifyNew(alerts: List<PetAlert>) {
         for (a in Repo.takeFresh(alerts)) {

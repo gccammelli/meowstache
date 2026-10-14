@@ -105,6 +105,8 @@ jobs:
           xcrun simctl terminate "$DEV" io.github.gccammelli.meowstache
           xcrun simctl launch "$DEV" io.github.gccammelli.meowstache --demo; sleep 25
           xcrun simctl io "$DEV" screenshot screenshots/2-demo-home.png
+          xcrun simctl ui "$DEV" appearance dark; sleep 5
+          xcrun simctl io "$DEV" screenshot screenshots/3-demo-home-dark.png
           xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Meowstache"' --style compact | tail -100 > screenshots/app-log.txt || true
 
       - uses: actions/upload-artifact@v4
