@@ -50,7 +50,7 @@ It's tested against a real Home Assistant with simulated robots running the firm
 
 ## Support the project
 
-Meowstache is free and always will be. Thanks to your support there's now an **iPhone beta** and a real iPhone to test it on. Donations keep development going and pay for the hardware it needs: test devices, an ESP programmer and parts for the open-firmware (local) work, and one day Apple's $99/year fee to put Meowstache on the App Store.
+Meowstache is free and always will be. Thanks to your support there's now an **iPhone beta** and a real iPhone to test it on. Donations keep development going and pay for the hardware it needs: test devices, an ESP programmer and parts for the open-firmware (local) work.
 
 [Buy me a coffee](https://buymeacoffee.com/meowstache)
 
