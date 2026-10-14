@@ -1,5 +1,12 @@
 package io.github.gccammelli.meowstache.ui
 
+import io.github.gccammelli.meowstache.ESPHOME_FIRMWARE_URL
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import io.github.gccammelli.meowstache.*
 
 import androidx.compose.foundation.background
@@ -301,13 +308,106 @@ fun RobotCard(r: io.github.gccammelli.meowstache.Robot, onClick: (() -> Unit)?) 
     }
 }
 
+/** "Add a Device" / "Add a pet": not possible through the cloud API; in local mode a cat goes on a free tracker slot. */
 @Composable
-private fun AddCard(label: String) = WCard(Modifier.fillMaxWidth().height(56.dp), pad = 0.dp) {
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Filled.AddCircle, null, tint = W.Accent.copy(alpha = 0.5f), modifier = Modifier.size(24.dp))
-        Text(label, color = W.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp))
-        NotAvailable()
+private fun AddCard(label: String) {
+    val local = Repo.localMode
+    var open by remember { mutableStateOf(false) }
+    WCard(Modifier.fillMaxWidth().height(56.dp), pad = 0.dp, onClick = if (local) ({ open = true }) else null) {
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.AddCircle, null, tint = W.Accent.copy(alpha = if (local) 1f else 0.5f), modifier = Modifier.size(24.dp))
+            Text(label, color = if (local) W.Text else W.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp))
+            if (!local) NotAvailable()
+        }
     }
+    if (!open) return
+    val ctx = LocalPlatform.current
+    if (label.contains("Device")) ConfirmDialog("Add a robot",
+        "A robot shows up here once it runs the ESPHome firmware and Home Assistant has adopted it (Settings › Devices, it's discovered automatically). " +
+            "Flashing needs opening the robot; the firmware's guide has the steps.",
+        "Flashing guide", { ctx.openUrl("$ESPHOME_FIRMWARE_URL/src/branch/main/docs/Litter%20Robot%204/Flashing%20Instructions.md") }, { open = false }, dismiss = "Close")
+    else AddPetDialog { open = false }
+}
+
+/** Local mode: a new cat on a free cat tracker slot of the chosen robots, with a starting weight so visits match it. */
+@Composable
+private fun AddPetDialog(onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current
+    val scope = rememberCoroutineScope()
+    val robots = state().robots
+    var name by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var on by remember { mutableStateOf(robots.map { it.serial }.toSet()) }
+    var busy by remember { mutableStateOf(false) }
+    val lbs = weight.replace(',', '.').toDoubleOrNull()?.let { if (Repo.units.value == "kg") it / io.github.gccammelli.meowstache.LBS_TO_KG else it }
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = W.Card,
+        title = { Text("Add a cat", color = W.Text) },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(weight, { weight = it }, label = { Text("Weight (${Repo.unitLabel()})") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                Text("Uses robots", color = W.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
+                robots.forEach { r ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(r.serial in on, { on = if (it) on + r.serial else on - r.serial })
+                        Text(r.name, color = W.Text, fontSize = 14.sp)
+                    }
+                }
+                Text("Takes a free \"Cat N\" slot of the robot's cat tracker and names it in Home Assistant. The robot then matches visits to this weight.",
+                    color = W.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                if (busy) CircularProgressIndicator(color = W.Accent, modifier = Modifier.padding(top = 10.dp).align(Alignment.CenterHorizontally))
+            }
+        },
+        confirmButton = { TextButton(enabled = !busy && name.isNotBlank() && lbs != null && lbs > 0 && on.isNotEmpty(), onClick = {
+            busy = true
+            scope.launch {
+                Repo.addPet(name.trim(), lbs!!, on).fold(
+                    { full -> ctx.toast(if (full.isEmpty()) "${name.trim()} added" else "Added, but no free slot on ${full.joinToString()}") },
+                    { ctx.toast("Couldn't add: ${it.message}") })
+                busy = false; onDismiss()
+            }
+        }) { Text("Add", color = W.Accent) } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = W.Text2) } })
+}
+
+/** Local mode: rename the cat, set its weight in the robots' tracker, or reset the tracker. */
+@Composable
+private fun LocalPetDialog(p: io.github.gccammelli.meowstache.Pet, onRenamed: () -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(p.name) }
+    var weight by remember { mutableStateOf("") }
+    var reset by remember { mutableStateOf(false) }
+    val lbs = weight.replace(',', '.').toDoubleOrNull()?.let { if (Repo.units.value == "kg") it / io.github.gccammelli.meowstache.LBS_TO_KG else it }
+    AlertDialog(onDismissRequest = onDismiss, containerColor = W.Card,
+        title = { Text("Edit ${p.name}", color = W.Text) },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(weight, { weight = it }, label = { Text("Set tracker weight (${Repo.unitLabel()})") }, singleLine = true,
+                    placeholder = { Text(Repo.weight(p.referenceLbs)) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                Text("Only if the robot keeps matching visits to the wrong cat: the tracker then starts from this weight.",
+                    color = W.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("Reset tracker…", color = W.Red, fontSize = 14.sp, modifier = Modifier.padding(top = 16.dp).clickable { reset = true })
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            val newName = name.trim()
+            onDismiss()
+            Repo.launch {
+                if (lbs != null && lbs > 0) Repo.setTrackerWeight(p, lbs).onFailure { ctx.toast("Failed: ${it.message}") }
+                if (newName.isNotEmpty() && newName != p.name) Repo.renamePet(p, newName)
+                    .fold({ ctx.toast("Renamed to $newName"); onRenamed() }, { ctx.toast("Rename failed: ${it.message}") })
+            }
+        }) { Text("Save", color = W.Accent) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = W.Text2) } })
+    if (reset) ConfirmDialog("Reset ${p.name}'s tracker?", "The robots forget ${p.name}'s learned weight and zero the visit counters. " +
+        "The history on this phone stays. Set a weight afterwards so visits are matched again.", "Reset",
+        { Repo.launch { Repo.resetTracker(p).onFailure { ctx.toast("Failed: ${it.message}") } } }, { reset = false })
 }
 
 @Composable
@@ -523,8 +623,10 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
     val p = s.pet(id) ?: return
     val r = s.readings(id)
     var na by remember { mutableStateOf(false) }
+    var localEdit by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf<String?>(null) }
     val notes = Repo.local.collectAsState().value.petNotes[id] ?: io.github.gccammelli.meowstache.PetNotes()
+    if (localEdit) LocalPetDialog(p, { nav.popBackStack() }) { localEdit = false }
     Box(Modifier.fillMaxSize().background(W.Bg)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             NetImage(p.image, Modifier.fillMaxWidth().aspectRatio(1.67f))
@@ -534,9 +636,9 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
                 }
                 Text(petSummary(p), color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 10.dp))
                 r.lastOrNull()?.let { Text("Last Visit: ${fmt(it.ts, "dd/MM/yyyy HH:mm")}", color = W.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp)) }
-                Pill("Edit Profile", { na = true }, Modifier.padding(top = 16.dp).width(260.dp),
+                Pill("Edit Profile", { if (Repo.localMode) localEdit = true else na = true }, Modifier.padding(top = 16.dp).width(260.dp),
                     icon = { Icon(Icons.Filled.Edit, null, tint = W.Accent) })
-                NotAvailable(Modifier.padding(top = 4.dp))
+                if (!Repo.localMode) NotAvailable(Modifier.padding(top = 4.dp))
             }
             Column(Modifier.padding(18.dp)) {
                 val (v, u) = splitWeight(yesterdayLbs(r))

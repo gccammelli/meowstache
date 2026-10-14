@@ -36,6 +36,7 @@ Robots running Joseph DiGiovanni's community [ESPHome firmware](https://codeberg
 
 - Several robots are fine. Cats come from the firmware's cat tracker: enable the "Cat N" entities in Home Assistant and rename them to your cats' names (as the firmware's guide says). A cat with the same name on two robots becomes one pet.
 - Give a cat a photo by setting a picture on its weight sensor in Home Assistant.
+- More control than the cloud gives: a per-day sleep schedule, Empty Litter, the firmware's own filter reset, Smart Cat Detection / Auto Cycle / Odor Control, and adding, renaming or re-weighing cats on the robots' cat tracker (these need an administrator's token).
 - Any model the firmware supports works (it supports the Litter-Robot 4 today).
 - Not sure yet? **Try the demo** in local mode: two pretend robots behind a pretend Home Assistant.
 

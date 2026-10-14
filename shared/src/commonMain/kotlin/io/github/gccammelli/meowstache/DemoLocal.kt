@@ -18,18 +18,22 @@ import kotlin.time.Instant
  */
 class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.systemDefault()) : HaBackend {
     override val base = ""
-    private class Ent(val id: String, val name: String, val unit: String? = null, val points: MutableList<HaPoint> = mutableListOf(), var picture: String? = null) {
+    /** [label] is the firmware's entity name; [custom] a name the user gave it (shown without the robot's name, as HA does). */
+    private class Ent(val id: String, val label: String, val unit: String? = null, val points: MutableList<HaPoint> = mutableListOf(),
+                      var picture: String? = null, var custom: String? = null, var enabled: Boolean = true) {
         val state get() = points.lastOrNull()?.state ?: "unknown"
     }
 
-    private val devices = listOf("demo-robbie" to "Robbie", "demo-bobbie" to "Bobbie")
+    private val devices = mutableListOf("demo-robbie" to "Robbie", "demo-bobbie" to "Bobbie")
+    private val pendingEnable = mutableSetOf<String>()
+    private fun friendly(e: Ent) = e.custom ?: "${devices.first { it.first == owner[e.id] }.second} ${e.label}"
     private val ents = LinkedHashMap<String, Ent>()
     private val owner = HashMap<String, String>()
     private var cycleEnds: Pair<String, Long>? = null
 
     private fun ent(dev: Int, domain: String, obj: String, name: String, initial: String, unit: String? = null, nameOverride: String? = null): Ent {
         val id = "$domain.litter_robot_4_$obj" + if (dev == 0) "" else "_${dev + 1}"
-        val e = Ent(id, nameOverride ?: "${devices[dev].second} $name", unit)
+        val e = Ent(id, name, unit, custom = nameOverride)
         e.points += HaPoint(0, initial)
         ents[id] = e; owner[id] = devices[dev].first
         return e
@@ -60,7 +64,9 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
             ent(d, "select", "night_light_brightness", "Night Light Brightness", "Medium")
             ent(d, "select", "panel_brightness", "Panel Brightness", "High")
             ent(d, "number", "clean_cycle_delay", "Clean Cycle Delay", "7", "min")
-            listOf("manual_cycle" to "Manual Cycle", "reset" to "Reset", "replace_filter" to "Replace Filter")
+            ent(d, "switch", "smart_cat_detection", "Smart Cat Detection", "on")
+            ent(d, "switch", "auto_cycle", "Auto Cycle", "on")
+            listOf("manual_cycle" to "Manual Cycle", "reset" to "Reset", "replace_filter" to "Replace Filter", "empty_litter" to "Empty Litter")
                 .forEach { (o, n) -> ent(d, "button", o, n, "unknown") }
             listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday").forEach { day ->
                 val o = day.lowercase()
@@ -71,10 +77,12 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
             }
             val slots = (1..4).map { n ->
                 val cat = cats[d].getOrNull(n - 1)?.first
-                ent(d, "number", "set_cat_${n}_weight", "Set Cat $n Weight", "unknown", "lb")
-                ent(d, "sensor", "cat_${n}_weight", "Cat $n Weight", "unknown", "lb", cat?.let { "$it Weight" })
-                    .also { e -> e.picture = cat?.let { "res:files/demo/${it.lowercase()}.jpg" } } to
-                    ent(d, "sensor", "cat_${n}_visits", "Cat $n Visits", "0", nameOverride = cat?.let { "$it Visits" })
+                val off = { e: Ent -> e.also { it.enabled = cat != null } } // the firmware ships the cat entities disabled
+                off(ent(d, "button", "cat_${n}_tracker_reset", "Cat $n Tracker Reset", "unknown", nameOverride = cat?.let { "$it Tracker Reset" }))
+                off(ent(d, "number", "set_cat_${n}_weight", "Set Cat $n Weight", "unknown", "lb", cat?.let { "Set $it Weight" }))
+                off(ent(d, "sensor", "cat_${n}_weight", "Cat $n Weight", "unknown", "lb", cat?.let { "$it Weight" })
+                    .also { e -> e.picture = cat?.let { "res:files/demo/${it.lowercase()}.jpg" } }) to
+                    off(ent(d, "sensor", "cat_${n}_visits", "Cat $n Visits", "0", nameOverride = cat?.let { "$it Visits" }))
             }
             Dev(ent(d, "sensor", "status", "Status", "Ready"),
                 ent(d, "sensor", "last_cat_weight", "Last Cat Weight", "unknown", "lb"),
@@ -108,16 +116,20 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
     override suspend fun get(path: String): String {
         finishCycle()
         return when {
-            path == "/api/states" -> buildJsonArray { ents.values.forEach { add(stateJson(it)) } }.toString()
+            path == "/api/states" -> buildJsonArray { ents.values.filter { it.enabled }.forEach { add(stateJson(it)) } }.toString()
+            path.startsWith("/api/states/") -> ents[path.removePrefix("/api/states/")]?.takeIf { it.enabled }?.let { stateJson(it).toString() }
+                ?: throw ApiException("Home Assistant: HTTP 404")
             path.startsWith("/api/history/period/") -> {
                 val start = parseTs(path.removePrefix("/api/history/period/").substringBefore('?')) ?: 0
                 val ids = path.substringAfter("filter_entity_id=").substringBefore('&').split(',')
+                // Like Home Assistant: one day unless end_time is given.
+                val end = path.substringAfter("end_time=", "").substringBefore('&').let(::parseTs) ?: (start + 86_400_000L)
                 buildJsonArray {
                     ids.mapNotNull { ents[it] }.forEach { e ->
                         add(buildJsonArray {
                             val before = e.points.lastOrNull { it.ts < start }
                             // Like Home Assistant, a repeated value is no new state.
-                            val rows = (listOfNotNull(before?.copy(ts = start)) + e.points.filter { it.ts >= start })
+                            val rows = (listOfNotNull(before?.copy(ts = start)) + e.points.filter { it.ts in start..end })
                                 .let { l -> l.filterIndexed { i, p -> i == 0 || p.state != l[i - 1].state } }
                             rows.forEachIndexed { i, p ->
                                 add(buildJsonObject {
@@ -137,11 +149,16 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
         if (path == "/api/template") return buildJsonArray {
             devices.forEach { (id, name) ->
                 add(buildJsonObject {
-                    put("id", id); put("name", name); put("model", "Litter Robot 4"); put("sw", "2026.10.0 (ESPHome 2026.9.1)")
-                    putJsonArray("entities") { owner.filterValues { it == id }.keys.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
+                    put("id", id); put("name", name); put("model", "Litter Robot 4"); put("sw", "2026.10.0 (ESPHome 2026.9.1)"); put("entry", "entry-$id")
+                    putJsonArray("entities") { owner.filterValues { it == id }.keys.filter { ents.getValue(it).enabled }.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
                 })
             }
         }.toString()
+        if (path.startsWith("/api/config/config_entries/entry/")) { // reload: newly enabled entities appear
+            ents.values.filter { it.id in pendingEnable }.forEach { it.enabled = true }
+            pendingEnable.clear()
+            return "{}"
+        }
         val (domain, service) = path.removePrefix("/api/services/").split('/')
         val data = json.parseToJsonElement(body).jsonObject
         val e = ents[data.s("entity_id")] ?: throw ApiException("Unknown entity")
@@ -150,14 +167,46 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
             "switch.turn_on" -> e.points += HaPoint(t, "on")
             "switch.turn_off" -> e.points += HaPoint(t, "off")
             "select.select_option" -> e.points += HaPoint(t, data.s("option")!!)
-            "number.set_value" -> e.points += HaPoint(t, data.s("value")!!)
-            "button.press" -> if (e.id.contains("manual_cycle")) {
+            "time.set_value" -> e.points += HaPoint(t, data.s("time")!!)
+            "number.set_value" -> {
+                e.points += HaPoint(t, data.s("value")!!)
+                // The cat tracker takes "Set Cat N Weight" as the cat's weight.
+                if ("_set_cat_" in e.id) ents[e.id.replace("number.", "sensor.").replace("_set_cat_", "_cat_")]?.points?.add(HaPoint(t, data.s("value")!!))
+            }
+            "button.press" -> if ("_tracker_reset" in e.id) {
+                ents[e.id.replace("button.", "sensor.").replace("_tracker_reset", "_weight")]?.points?.add(HaPoint(t, "unknown"))
+                ents[e.id.replace("button.", "sensor.").replace("_tracker_reset", "_visits")]?.points?.add(HaPoint(t, "0"))
+            } else if (e.id.contains("manual_cycle")) {
                 val status = ents.getValue(e.id.replace("button.", "sensor.").replace("manual_cycle", "status"))
                 status.points += HaPoint(t, "Clean cycle in progress")
                 cycleEnds = status.id to t + 20_000
             }
         }
         return "[]"
+    }
+
+    override suspend fun ws(commands: List<JsonObject>): List<kotlinx.serialization.json.JsonElement?> = commands.map { c ->
+        when (c.s("type")) {
+            "config/device_registry/update" -> {
+                val i = devices.indexOfFirst { it.first == c.s("device_id") }
+                devices[i] = devices[i].first to c.s("name_by_user")!!
+            }
+            "config/entity_registry/update" -> {
+                val e = ents[c.s("entity_id")] ?: throw ApiException("Entity not found")
+                c.s("name")?.let { e.custom = it }
+                if (c.containsKey("disabled_by") && !e.enabled) pendingEnable += e.id
+            }
+            "config/entity_registry/list" -> return@map buildJsonArray {
+                ents.values.forEach { e ->
+                    add(buildJsonObject {
+                        put("entity_id", e.id); put("device_id", owner[e.id]); put("config_entry_id", "entry-${owner[e.id]}")
+                        put("disabled_by", if (e.enabled || e.id in pendingEnable) null else "integration")
+                    })
+                }
+            }
+            else -> throw ApiException("Demo Home Assistant: no ${c.s("type")}")
+        }
+        null
     }
 
     /** A demo clean cycle takes 20 s. */
@@ -171,7 +220,7 @@ class FakeHomeAssistant(private val now: Long = nowMs(), zone: ZoneId = ZoneId.s
     private fun stateJson(e: Ent): JsonObject = buildJsonObject {
         put("entity_id", e.id); put("state", e.state)
         putJsonObject("attributes") {
-            put("friendly_name", e.name); e.unit?.let { put("unit_of_measurement", it) }; e.picture?.let { put("entity_picture", it) }
+            put("friendly_name", friendly(e)); e.unit?.let { put("unit_of_measurement", it) }; e.picture?.let { put("entity_picture", it) }
         }
         put("last_updated", Instant.fromEpochMilliseconds(e.points.last().ts.coerceAtLeast(now - 60_000)).toString())
     }

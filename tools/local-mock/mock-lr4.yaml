@@ -125,6 +125,22 @@ switch:
   - {platform: template, id: sleep_schedule_fri, name: "Friday Sleep Schedule", optimistic: true}
   - {platform: template, id: sleep_schedule_sat, name: "Saturday Sleep Schedule", optimistic: true}
 
+datetime:
+  - {platform: template, type: time, name: "Sunday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Sunday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Monday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Monday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Tuesday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Tuesday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Wednesday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Wednesday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Thursday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Thursday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Friday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Friday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Saturday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Saturday Wake Time", optimistic: true, initial_value: "06:30:00"}
+
 number:
   - platform: template
     id: clean_cycle_delay

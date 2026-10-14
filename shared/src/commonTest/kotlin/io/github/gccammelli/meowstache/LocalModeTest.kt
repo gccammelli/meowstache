@@ -32,7 +32,9 @@ class LocalModeTest {
         assertEquals("switch.litter_robot_4_hopper_2", r.roles["switch.hopper"])
         assertEquals("button.litter_robot_4_reset_2", r.roles["button.reset"]) // not the cat tracker's reset
         assertEquals("switch.litter_robot_4_monday_sleep_schedule_2", r.roles["switch.monday_sleep_schedule"])
-        assertEquals(mapOf(1 to ("sensor.litter_robot_4_cat_1_weight_2" to "sensor.litter_robot_4_cat_1_visits_2")), r.cats)
+        val cat = r.cats.getValue(1)
+        assertEquals("sensor.litter_robot_4_cat_1_weight_2" to "sensor.litter_robot_4_cat_1_visits_2", cat.weight to cat.visits)
+        assertEquals(4, cat.entities.size) // + set weight, tracker reset
     }
 
     @Test
@@ -110,5 +112,52 @@ class LocalModeTest {
         assertEquals("OFF", after.nightLightMode)
         assertEquals(15, after.waitMinutes)
         assertEquals("Cycling", after.status.first)
+    }
+
+    @Test
+    fun slotEntitiesGetCatNames() {
+        assertEquals("Pixel Weight", haSlotName("sensor.litter_robot_4_cat_3_weight_2", 3, "Pixel"))
+        assertEquals("Set Pixel Weight", haSlotName("number.litter_robot_4_set_cat_3_weight", 3, "Pixel"))
+        assertEquals("Pixel Tracker Reset", haSlotName("button.litter_robot_4_cat_3_tracker_reset", 3, "Pixel"))
+        assertEquals("Pixel Feces Count", haSlotName("sensor.litter_robot_4_cat_3_feces_count", 3, "Pixel"))
+    }
+
+    @Test
+    fun firmwareExtrasInTheDemo() = runTest {
+        val ha = LocalHa(FakeHomeAssistant())
+        val since = nowMs() - day
+        var robbie = ha.load(since).robots.first()
+        assertTrue(robbie.has("button.empty_litter") && robbie.haState("switch.auto_cycle") == "on")
+
+        ha.setSleep(robbie, "Saturday", true, 22 * 60 + 30, 7 * 60 + 15)
+        ha.call(robbie, "switch.auto_cycle", "turn_off")
+        ha.renameRobot(robbie, "Rob")
+        robbie = ha.load(since).robots.first()
+        val sat = robbie.raw.o("weekdaySleepModeEnabled")!!.o("Saturday")!!
+        assertEquals(Triple(true, 1350, 435), Triple(sat.b("isEnabled"), sat.i("sleepTime"), sat.i("wakeTime")))
+        assertEquals("off", robbie.haState("switch.auto_cycle"))
+        assertEquals("Rob", robbie.name)
+        haCommand(robbie, "emptyLitter", null).let { assertEquals("button.litter_robot_4_empty_litter", it.third.s("entity_id")) }
+
+        // A new cat on both robots: free slots get enabled, named and weighed.
+        assertEquals(emptyList(), ha.addPet("Pixel", 10.1, ha.load(since).robots.map { it.serial }.toSet()))
+        var snap = ha.load(since)
+        val pixel = snap.pets.single { it.name == "Pixel" }
+        assertEquals(10.1, pixel.referenceLbs)
+        assertEquals(listOf(3, 2), pixel.haSlots().map { it.second }) // Robbie's slot 3, Bobbie's slot 2
+
+        ha.setTrackerWeight(pixel, 9.9)
+        assertEquals(9.9, ha.load(since).pets.single { it.name == "Pixel" }.referenceLbs)
+        ha.resetTracker(pixel)
+        assertTrue(ha.load(since).pets.none { it.name == "Pixel" }) // a reset slot is free again
+
+        // Renaming follows the cat on both robots.
+        val luna = snap.pets.single { it.name == "Luna" }
+        ha.renamePet(luna, "Moon")
+        snap = ha.load(nowMs() - 30 * day)
+        val moon = snap.pets.single { it.name == "Moon" }
+        assertEquals("ha-moon", moon.id)
+        assertEquals(2, moon.haSlots().size)
+        assertTrue(snap.weights.getValue("ha-moon").isNotEmpty())
     }
 }

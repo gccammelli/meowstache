@@ -313,6 +313,8 @@ object Repo {
     // ---------- loading ----------
 
     fun refreshAsync() = scope.launch { refresh() }
+    /** For work started from a dialog that closes right away (a dialog's own scope would cancel it). */
+    fun launch(block: suspend () -> Unit) = scope.launch { block() }
 
     suspend fun refresh(full: Boolean = true) = refreshLock.withLock {
         if (demo && !localMode) return@withLock
@@ -440,7 +442,7 @@ object Repo {
     }
 
     suspend fun rename(robot: Robot, name: String): Result<Unit> = runCatching {
-        if (localMode) throw ApiException("Rename the robot in Home Assistant (device settings); Meowstache shows that name")
+        if (localMode) return local { ha().renameRobot(robot, name) }
         if (demo) demoOnly()
         api.gql(LR4_ENDPOINT, "mutation rename(\$serial: String!, \$name: String) { updateLitterRobot4(input: { serial: \$serial, name: \$name }) { name } }",
             mapOf("serial" to robot.serial, "name" to name))
@@ -477,6 +479,40 @@ object Repo {
         "ESP ${l?.s("espFirmwareVersion")} / PIC ${l?.s("picFirmwareVersion")} / TOF ${l?.s("laserBoardFirmwareVersion")}" +
             if (needed) "\nUpdate available" else "\nUp to date"
     }.getOrNull()
+
+    // ---------- local mode only: what the ESPHome firmware adds over the cloud ----------
+
+    /** Runs a Home Assistant change, then reloads what it touched. */
+    private suspend fun local(block: suspend () -> Unit): Result<Unit> = runCatching {
+        if (!localMode) throw ApiException("Only with the ESPHome firmware (local mode)")
+        block()
+        kotlinx.coroutines.delay(1000)
+        refresh(full = false)
+    }
+
+    /** A switch or button of the firmware, e.g. ("switch.auto_cycle", "turn_on"). */
+    suspend fun haCall(robot: Robot, role: String, service: String) = local { ha().call(robot, role, service) }
+    suspend fun setSleep(robot: Robot, day: String, enabled: Boolean, sleepMin: Int, wakeMin: Int) = local { ha().setSleep(robot, day, enabled, sleepMin, wakeMin) }
+    suspend fun setTrackerWeight(pet: Pet, lbs: Double) = local { ha().setTrackerWeight(pet, lbs) }
+    suspend fun resetTracker(pet: Pet) = local { ha().resetTracker(pet) }
+
+    /** Renames the cat in Home Assistant; its history and notes here follow it to the new name. */
+    suspend fun renamePet(pet: Pet, name: String) = local {
+        ha().renamePet(pet, name)
+        val old = pet.id; val new = haPetId(name)
+        if (old != new) {
+            state.update { st -> st.copy(weights = st.weights - old + (new to merge(st.weights[new], st.weights[old].orEmpty()))) }
+            updateLocal { l -> l.copy(petNotes = l.petNotes[old]?.let { l.petNotes - old + (new to it) } ?: l.petNotes,
+                overrides = l.overrides.mapValues { (_, p) -> if (p == old) new else p }) }
+            saveCache()
+        }
+    }
+
+    /** Adds a cat on the chosen robots' free tracker slots; returns the robots that had none. */
+    suspend fun addPet(name: String, lbs: Double, robots: Set<String>): Result<List<String>> {
+        var full = emptyList<String>()
+        return local { full = ha().addPet(name, lbs, robots) }.map { full }
+    }
 
     // ---------- derived data ----------
 
