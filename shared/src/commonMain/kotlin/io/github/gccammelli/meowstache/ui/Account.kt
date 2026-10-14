@@ -195,7 +195,7 @@ fun AccountScreen(nav: NavHostController) {
                 ListRow("Report a Meowstache Issue", null, { ctx.openUrl("https://github.com/gccammelli/meowstache/issues") }, icon = Icons.Filled.BugReport, divider = true)
                 ListRow("Litter-Robot Support", "The manufacturer's help and contact page", { ctx.openUrl("https://www.litter-robot.com/support/#contact-us") }, icon = Icons.Filled.SupportAgent, divider = true)
                 ListRow("Litter-Robot FAQ", "The manufacturer's FAQ", { ctx.openUrl("https://www.litter-robot.com/faq.html") }, icon = Icons.AutoMirrored.Filled.Help, divider = true)
-                ListRow("Buy me a coffee", "Help fund the iOS version", { ctx.openUrl(COFFEE) }, icon = Icons.Filled.LocalCafe, divider = true)
+                ListRow("Buy me a coffee", "Help keep Meowstache going", { ctx.openUrl(COFFEE) }, icon = Icons.Filled.LocalCafe, divider = true)
                 ListRow("Litter-Robot 4 Guide", "The manufacturer's setup guide", { ctx.openUrl("https://www.litter-robot.com/support/litter-robot-4/") }, icon = Icons.AutoMirrored.Filled.MenuBook, divider = true)
             }
             Spacer(Modifier.height(20.dp))

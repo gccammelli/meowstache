@@ -38,7 +38,7 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ## Support the project
 
-Meowstache is free and always will be. Donations go toward an **iOS version**: building iPhone apps needs a Mac and an iPhone to test on. The goal is about **$1,000** for a second-hand MacBook and iPhone, plus Apple's $99/year fee to publish on the App Store. Progress will be posted here.
+Meowstache is free and always will be. Thanks to your support there's now an **iPhone beta** and a real iPhone to test it on. Donations keep development going and pay for the hardware it needs: test devices, an ESP programmer and parts for the open-firmware (local) work, and one day Apple's $99/year fee to put Meowstache on the App Store.
 
 [Buy me a coffee](https://buymeacoffee.com/meowstache)
 
