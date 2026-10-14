@@ -30,10 +30,21 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 **[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [SideStore](https://sidestore.io) (or AltStore), which signs it with your own free Apple ID. No App Store, no account of mine. It's tested in the iOS simulator; real-iPhone testers are very welcome. On iOS, alerts are only checked while the app is open for now.
 
+## Local mode: no cloud at all (preview)
+
+Robots running Joseph DiGiovanni's community [ESPHome firmware](https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot) don't talk to the manufacturer's cloud. Meowstache can read them through your own **Home Assistant** instead: pick **Local: Home Assistant** on the first screen, enter your Home Assistant address and a long-lived access token, and every screen (history, insights, alerts, controls) works from your own network.
+
+- Several robots are fine. Cats come from the firmware's cat tracker: enable the "Cat N" entities in Home Assistant and rename them to your cats' names (as the firmware's guide says). A cat with the same name on two robots becomes one pet.
+- Give a cat a photo by setting a picture on its weight sensor in Home Assistant.
+- Any model the firmware supports works (it supports the Litter-Robot 4 today).
+- Not sure yet? **Try the demo** in local mode: two pretend robots behind a pretend Home Assistant.
+
+It's tested against a real Home Assistant with simulated robots running the firmware's own cat tracker ([tools/local-mock](tools/local-mock)), not yet against a real flashed robot. Testers very welcome.
+
 ## Before you use it
 
 - It's an independent companion app. It **doesn't replace the official Litter-Robot app**, isn't affiliated with or endorsed by its maker, and some things (setup, adding devices or pets, some settings) still need the official app. Litter-Robot is a trademark of its owner.
-- **Litter-Robot 4 only.** Other robots aren't supported yet, so they won't show up.
+- **Litter-Robot 4 only** with the cloud. Other robots aren't supported yet, so they won't show up (local mode supports what the ESPHome firmware supports).
 - It has only been tested with one LR4. Help testing is very welcome: please open an issue.
 
 ## Support the project
@@ -46,7 +57,7 @@ Meowstache is free and always will be. Donations go toward an **iOS version**: b
 
 - You sign in with your normal Litter-Robot account, because the robot's data and controls only exist in the manufacturer's cloud.
 - Your password goes straight to the official login server over HTTPS and is **never stored**. The app only keeps a login token, encrypted with a key held in the phone's secure hardware (Android Keystore), and leaves it out of backups.
-- The app only talks to the robot's official servers. There are no analytics and no third parties. Details: [PRIVACY.md](PRIVACY.md).
+- The app only talks to the robot's official servers (or, in local mode, only to your Home Assistant). There are no analytics and no third parties. Details: [PRIVACY.md](PRIVACY.md).
 
 ## Contact
 
@@ -54,7 +65,7 @@ Questions, ideas or press: [meowstache.app@gmail.com](mailto:meowstache.app@gmai
 
 ## Credits
 
-Huge thanks to [pylitterbot](https://github.com/natekspencer/pylitterbot) by Nathan Spencer, the open-source library behind the [Home Assistant Litter-Robot integration](https://www.home-assistant.io/integrations/litterrobot/). Its years of work figuring out how the robot talks to its servers made this app possible. Meowstache is a separate implementation (no code was copied), built on that knowledge.
+Huge thanks to [pylitterbot](https://github.com/natekspencer/pylitterbot) by Nathan Spencer, the open-source library behind the [Home Assistant Litter-Robot integration](https://www.home-assistant.io/integrations/litterrobot/). Its years of work figuring out how the robot talks to its servers made this app possible. Meowstache is a separate implementation (no code was copied), built on that knowledge. Local mode exists thanks to Joseph DiGiovanni's [ESPHome Litter-Robot firmware](https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot).
 
 ## Licence
 

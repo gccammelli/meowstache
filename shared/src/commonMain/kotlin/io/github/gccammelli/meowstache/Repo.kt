@@ -38,8 +38,13 @@ data class AppState(
 
     /** Estimated minutes per visit, keyed by reading timestamp. */
     fun durations(petId: String): Map<Long, Double> = durationCache.getOrPut(petId) {
-        val robot = robots.firstOrNull() ?: return@getOrPut emptyMap()
-        visitDurations(history[petId].orEmpty(), acts[robot.serial].orEmpty(), robot.waitMinutes)
+        // Each visit is timed on the robot that weighed it (a cat can use several robots).
+        val first = robots.firstOrNull() ?: return@getOrPut emptyMap()
+        val weighedOn = acts.flatMap { (serial, a) -> a.filter { it.value == "catWeight" }.map { it.ts to serial } }.toMap()
+        history[petId].orEmpty().groupBy { weighedOn[it.ts] ?: first.serial }.flatMap { (serial, visits) ->
+            val robot = robots.firstOrNull { it.serial == serial } ?: first
+            visitDurations(visits, acts[serial].orEmpty(), robot.waitMinutes).entries
+        }.associate { it.key to it.value }
     }
     private val durationCache = HashMap<String, Map<Long, Double>>()
 }
@@ -86,6 +91,7 @@ private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = t
 object Repo {
     lateinit var api: Api; private set
     private lateinit var prefs: KeyValue
+    private lateinit var secrets: SecretStore
     private lateinit var files: AppFiles
     val state = MutableStateFlow(AppState())
     val units = MutableStateFlow("kg")
@@ -98,12 +104,14 @@ object Repo {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val refreshLock = Mutex()
 
-    private const val CACHE = "history2.json"
+    /** Cloud and local mode keep separate histories, so switching never mixes or wipes either. */
+    private val CACHE get() = if (localMode) "history-local.json" else "history2.json"
 
     fun init(p: PlatformStorage) {
         if (::api.isInitialized) return
         api = Api(p.auth, p.secrets)
         prefs = p.settings
+        secrets = p.secrets
         files = p.files
         units.value = (prefs.getString("units") ?: "kg")
         decimals.value = prefs.getInt("decimals", 1)
@@ -113,18 +121,55 @@ object Repo {
         state.update { it.copy(overrides = local.value.overrides) }
         messages.value = prefs.getString("messages")?.let { runCatching { json.decodeFromString<List<Message>>(it) }.getOrNull() }.orEmpty()
         loadCache()
-        if (demo) state.value = demoState()
+        if (demo) startDemo()
     }
 
     /** "Try the demo": made-up robot and cats, no account, nothing sent anywhere (see Demo.kt). */
     val demo get() = prefs.getBoolean("demo", false)
-    val signedIn get() = api.isLoggedIn || demo
+    val signedIn get() = if (localMode) demo || secrets.get("haToken") != null else api.isLoggedIn || demo
     val introAccepted get() = prefs.getBoolean("intro", false)
     fun acceptIntro() = prefs.putBoolean("intro", true)
-    fun email(): String = if (demo) DEMO_EMAIL else api.email
+    fun email(): String = when {
+        localMode -> if (demo) "Demo Home Assistant" else prefs.getString("haUrl").orEmpty()
+        demo -> DEMO_EMAIL
+        else -> api.email
+    }
     fun startDemo() {
         prefs.putBoolean("demo", true)
-        state.value = demoState()
+        if (localMode) { state.value = AppState(overrides = local().overrides); ha = null; refreshAsync() } else state.value = demoState()
+    }
+    private fun local() = this.local.value
+
+    /**
+     * Local mode: robots on the community ESPHome firmware, read through the user's Home Assistant
+     * instead of the manufacturer's cloud (HomeAssistant.kt). Chosen on the first screen; cloud is the default.
+     */
+    val localMode get() = prefs.getString("mode") == "local"
+    val modeChosen get() = prefs.getString("mode") != null
+    fun setMode(local: Boolean) {
+        prefs.putString("mode", if (local) "local" else "cloud")
+        ha = null
+        state.value = AppState(overrides = local().overrides)
+        loadCache()
+    }
+    private var ha: LocalHa? = null
+    private fun ha(): LocalHa = ha ?: LocalHa(
+        if (demo) FakeHomeAssistant()
+        else HaHttp(prefs.getString("haUrl") ?: throw AuthException("Not connected"), secrets.get("haToken") ?: throw AuthException("Not connected"))
+    ).also { ha = it }
+
+    /** Checks the address and token by loading the robots, then keeps them (token in the secret store). */
+    suspend fun connectHa(url: String, rawToken: String): Int {
+        val token = rawToken.filterNot { it.isWhitespace() } // pasted tokens often carry line breaks or spaces
+        val client = HaHttp(url, token)
+        val found = LocalHa(client).load(nowMs()).robots.size
+        prefs.putBoolean("demo", false)
+        prefs.putString("haUrl", client.base)
+        secrets.set("haToken", token)
+        ha = null
+        state.value = AppState(overrides = local().overrides)
+        loadCache()
+        return found
     }
     private fun demoOnly(): Nothing = throw ApiException("Demo mode: there's no real robot to control")
 
@@ -172,6 +217,7 @@ object Repo {
     }
 
     private suspend fun saveCache() = withContext(Dispatchers.IO) {
+        val CACHE = CACHE
         if (demo) return@withContext // never mix demo data into the real history
         val st = state.value
         files.write(CACHE, json.encodeToString(HistoryCache(st.weights, st.acts)))
@@ -248,6 +294,8 @@ object Repo {
     /** Signs out but keeps the history on the phone; [onLogin] drops it only if a different account signs in. */
     fun logout() {
         prefs.putBoolean("demo", false)
+        prefs.putString("haUrl", null)
+        ha = null
         api.logout()
         state.value = AppState(overrides = local.value.overrides)
     }
@@ -267,9 +315,10 @@ object Repo {
     fun refreshAsync() = scope.launch { refresh() }
 
     suspend fun refresh(full: Boolean = true) = refreshLock.withLock {
-        if (demo) return@withLock
+        if (demo && !localMode) return@withLock
         state.update { it.copy(loading = true, error = null) }
         try {
+            if (localMode) return@withLock refreshLocal()
             val uid = api.userId ?: throw AuthException("Not logged in")
             if (prefs.getString("owner") == null) prefs.putString("owner", uid)
             coroutineScope {
@@ -298,6 +347,21 @@ object Repo {
             state.update { it.copy(loading = false, historyLoading = false, error = e.message ?: e.toString()) }
             if (e is AuthException && !api.isLoggedIn) throw e
         }
+    }
+
+    /** Home Assistant keeps ~10 days of history by default, so fetch from a day before the newest cached row (or a year back). */
+    private suspend fun refreshLocal() {
+        val have = state.value.acts.values.flatten().maxOfOrNull { it.ts }
+        val snap = withContext(Dispatchers.Default) { ha().load(have?.minus(86_400_000L) ?: (nowMs() - 365L * 86_400_000L)) } // parsing a year of history is heavy
+        state.update { s ->
+            s.copy(
+                firstName = "", robots = snap.robots, pets = snap.pets,
+                weights = (s.weights.keys + snap.weights.keys).associateWith { merge(s.weights[it], snap.weights[it].orEmpty()) },
+                acts = (s.acts.keys + snap.acts.keys).associateWith { (s.acts[it].orEmpty() + snap.acts[it].orEmpty()).distinct().sortedByDescending { a -> a.ts } },
+                loading = false, historyLoading = false, updatedAt = nowMs(),
+            )
+        }
+        saveCache()
     }
 
     /** Pulls the whole weight and activity history and merges it into the on-device cache. */
@@ -359,6 +423,11 @@ object Repo {
     // ---------- commands ----------
 
     suspend fun command(robot: Robot, command: String, value: String? = null): Result<Unit> = runCatching {
+        if (localMode) {
+            ha().command(robot, command, value)
+            kotlinx.coroutines.delay(1000)
+            return@runCatching refresh(full = false)
+        }
         if (demo) demoOnly()
         val data = api.gql(LR4_ENDPOINT, """
             mutation sendCommand(${'$'}serial: String!, ${'$'}command: String!, ${'$'}value: String, ${'$'}commandSource: String) {
@@ -371,6 +440,7 @@ object Repo {
     }
 
     suspend fun rename(robot: Robot, name: String): Result<Unit> = runCatching {
+        if (localMode) throw ApiException("Rename the robot in Home Assistant (device settings); Meowstache shows that name")
         if (demo) demoOnly()
         api.gql(LR4_ENDPOINT, "mutation rename(\$serial: String!, \$name: String) { updateLitterRobot4(input: { serial: \$serial, name: \$name }) { name } }",
             mapOf("serial" to robot.serial, "name" to name))
@@ -379,6 +449,7 @@ object Repo {
 
     /** pylitterbot: isRemoved = true disables the hopper; the API takes ~5 s to reflect it. */
     suspend fun toggleHopper(robot: Robot, removed: Boolean): Result<Unit> = runCatching {
+        if (localMode) return command(robot, if (removed) "hopperOff" else "hopperOn")
         if (demo) demoOnly()
         val r = api.gql(LR4_ENDPOINT, "mutation ToggleHopper(\$serial: String!, \$isRemoved: Boolean!) { toggleHopper(serial: \$serial, isRemoved: \$isRemoved) { success } }",
             mapOf("serial" to robot.serial, "isRemoved" to removed))
@@ -388,12 +459,14 @@ object Repo {
     }
 
     suspend fun triggerFirmwareUpdate(robot: Robot): Result<Boolean> = runCatching {
+        if (localMode) throw ApiException("Update the ESPHome firmware from Home Assistant or the ESPHome dashboard")
         if (demo) demoOnly()
         api.gql(LR4_ENDPOINT, "mutation updateFirmware(\$serial: String!) { litterRobot4TriggerFirmwareUpdate(input: {serial: \$serial}) { isUpdateTriggered } }",
             mapOf("serial" to robot.serial)).o("litterRobot4TriggerFirmwareUpdate")?.b("isUpdateTriggered") == true
     }
 
     suspend fun latestFirmware(robot: Robot): String? = runCatching {
+        if (localMode) return@runCatching "ESPHome firmware ${robot.raw.s("haFirmware") ?: ""}\nUpdates via Home Assistant / ESPHome"
         if (demo) return@runCatching "ESP 1.1.84 / PIC 10500.3072.2.93 / TOF 5.0.2.1\nUp to date"
         val f = api.gql(LR4_ENDPOINT, """query getFirmwareDetails(${'$'}serial: String!) { litterRobot4CompareFirmwareVersion(serial: ${'$'}serial) {
             isEspFirmwareUpdateNeeded isPicFirmwareUpdateNeeded isLaserboardFirmwareUpdateNeeded

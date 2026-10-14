@@ -98,7 +98,7 @@ fun RobotScreen(nav: NavHostController, serial: String) {
     Column(Modifier.fillMaxSize().background(W.Bg)) {
         Box(Modifier.weight(1f)) {
             Screen({
-                BackTopBar("Litter-Robot 4", { nav.popBackStack() }) {
+                BackTopBar(robot.model, { nav.popBackStack() }) {
                     Icon(Icons.Outlined.Settings, "Settings", tint = W.Text, modifier = Modifier.size(26.dp).clickable { nav.navigate("robotSettings/$serial") })
                 }
             }) {

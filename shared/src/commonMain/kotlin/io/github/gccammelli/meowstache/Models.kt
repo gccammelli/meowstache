@@ -22,6 +22,8 @@ data class Robot(val raw: JsonObject) {
     val id get() = raw.s("unitId").orEmpty()
     val serial get() = raw.s("serial").orEmpty()
     val name get() = raw.s("name") ?: "Litter-Robot"
+    /** "Litter-Robot 4" from the cloud; local mode reports whatever model the ESPHome firmware runs on. */
+    val model get() = raw.s("model")?.replace("Litter Robot", "Litter-Robot") ?: "Litter-Robot 4"
     val isOnline get() = raw.b("isOnline")
     val isOn get() = raw.s("unitPowerStatus") == "ON"
     val wastePercent get() = raw.d("DFILevelPercent")?.toInt() ?: 0
@@ -41,7 +43,7 @@ data class Robot(val raw: JsonObject) {
         get() = raw.o("weekdaySleepModeEnabled")?.values?.any { (it as? JsonObject)?.b("isEnabled") == true } == true
     /** The official app's compact version, e.g. ESP 1.1.84 + TOF 5.0.2.1 + PIC 10500.3072.2.93 → "1184.5021.293". */
     val firmware: String
-        get() = listOf(
+        get() = raw.s("haFirmware") ?: listOf(
             raw.s("espFirmware")?.replace(".", ""),
             raw.s("laserBoardFirmwareVersion")?.replace(".", ""),
             raw.s("picFirmwareVersion")?.split(".")?.takeLast(2)?.joinToString(""),

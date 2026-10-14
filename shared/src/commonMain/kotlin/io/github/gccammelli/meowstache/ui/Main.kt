@@ -149,7 +149,8 @@ fun splitWeight(lbs: Double?): Pair<String, String> =
 @Composable
 fun ErrorBanner() {
     val s = state()
-    if (Repo.demo) Text("Demo mode: a made-up robot and cats. Log out to use your own account.", color = W.Accent, fontSize = 12.sp,
+    if (Repo.demo) Text(if (Repo.localMode) "Demo mode: made-up robots on the ESPHome firmware, through a pretend Home Assistant. Log out to connect yours."
+        else "Demo mode: a made-up robot and cats. Log out to use your own account.", color = W.Accent, fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
     s.error?.let { Text("Couldn't refresh: $it", color = W.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp)) }
 }

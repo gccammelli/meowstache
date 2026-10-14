@@ -150,13 +150,13 @@ fun AccountScreen(nav: NavHostController) {
                     Chevron()
                 }
             }
-            Group("Account", W.Accent) {
+            if (!Repo.localMode) Group("Account", W.Accent) {
                 ListRow("Login Information", null, { login = true }, icon = Icons.Filled.AccountBox)
                 ListRow("Addresses", null, { ctx.openUrl(Repo.storeUrl("customer/address/")) }, icon = Icons.Filled.Home, divider = true)
                 ListRow("Payment Methods", null, { ctx.openUrl(Repo.storeUrl("vault/cards/listaction/")) }, icon = Icons.Filled.CreditCard, divider = true)
                 ListRow("Referral Dashboard", null, { ctx.openUrl("https://www.whisker.com/share") }, icon = Icons.Filled.Groups, divider = true)
             }
-            Group("Orders & Subscriptions", W.Green) {
+            if (!Repo.localMode) Group("Orders & Subscriptions", W.Green) {
                 ListRow("Orders", null, { ctx.openUrl(Repo.storeUrl("sales/order/history/")) }, icon = Icons.Filled.LocalShipping)
                 ListRow("Subscriptions", null, { ctx.openUrl(Repo.storeUrl("customer/subscriptions/")) }, icon = Icons.Filled.Autorenew, divider = true)
                 ListRow("Returns", null, { ctx.openUrl(Repo.storeUrl("returns")) }, icon = Icons.AutoMirrored.Filled.AssignmentReturn, divider = true)
@@ -207,14 +207,22 @@ fun AccountScreen(nav: NavHostController) {
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
         }
     }
-    if (privacy) ConfirmDialog("Meowstache Privacy",
+    if (privacy && Repo.localMode) ConfirmDialog("Meowstache Privacy",
+        "• Local mode only talks to your own Home Assistant, at the address you entered. Nothing is sent to the Litter-Robot servers.\n" +
+        "• The access token is kept on this phone, encrypted with a key in the phone's secure hardware, and never backed up.\n" +
+        "• Your robot and pet history is stored only on this phone (and in Android's own backup, if you use it).\n" +
+        "• No analytics, no ads, no other servers.",
+        "ESPHome firmware", { ctx.openUrl(io.github.gccammelli.meowstache.ESPHOME_FIRMWARE_URL) }, { privacy = false }, dismiss = "Close")
+    else if (privacy) ConfirmDialog("Meowstache Privacy",
         "• Your password goes straight to the Litter-Robot login server over HTTPS and is never stored.\n" +
         "• A login token is kept on this phone, encrypted with a key in the phone's secure hardware, and never backed up.\n" +
         "• Your robot and pet history is stored only on this phone (and in Android's own backup, if you use it).\n" +
         "• The app only talks to the Litter-Robot servers. No analytics, no ads, no other servers.\n\n" +
         "Your data on the Litter-Robot servers is covered by the manufacturer's own privacy policy.",
         "Manufacturer's policy", { ctx.openUrl("https://www.litter-robot.com/legal.html#privacypolicy") }, { privacy = false }, dismiss = "Close")
-    if (login) ConfirmDialog("Login Information", "Signed in as ${Repo.email()}.\n\nYour email and password belong to your Litter-Robot account. You can change the password on the manufacturer's website.",
+    if (login && Repo.localMode) InfoDialog("Home Assistant", "Connected to ${Repo.email()}.\n\n" +
+        "To disconnect for good, log out here and delete the Meowstache token in Home Assistant (your profile › Security).") { login = false }
+    else if (login) ConfirmDialog("Login Information", "Signed in as ${Repo.email()}.\n\nYour email and password belong to your Litter-Robot account. You can change the password on the manufacturer's website.",
         "Change password", { ctx.openUrl(Repo.storeUrl("customer/account/forgotpassword/")) }, { login = false })
 }
 
@@ -382,7 +390,7 @@ fun NotificationsScreen(nav: NavHostController) {
             WCard(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Device:", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(s.robots.firstOrNull()?.let { "Litter-Robot 4" } ?: "—", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    Text(s.robots.firstOrNull()?.model ?: "—", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(start = 10.dp).clip(RoundedCornerShape(50)).background(W.pick(0xFF262626, 0xFFF1F1F1)).padding(horizontal = 16.dp, vertical = 8.dp))
                 }
                 Text("Receive push notifications about your Litter-Robot 4. Select the topics you want to be informed about.",
