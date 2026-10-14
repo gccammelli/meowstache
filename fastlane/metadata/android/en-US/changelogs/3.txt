@@ -1,0 +1,1 @@
+Rebuilt on Kotlin Multiplatform so the same app also runs on iPhone (iOS beta). No changes to how the Android app works.

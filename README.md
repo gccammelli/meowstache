@@ -28,6 +28,10 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 **[Download the latest APK](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)** (or browse [all releases](https://github.com/gccammelli/meowstache/releases)). An F-Droid listing is on its way. Note that the F-Droid build is signed by F-Droid, so you can't update between the two: pick one.
 
+### iPhone (beta)
+
+**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [SideStore](https://sidestore.io) (or AltStore), which signs it with your own free Apple ID. No App Store, no account of mine. It's tested in the iOS simulator; real-iPhone testers are very welcome. On iOS, alerts are only checked while the app is open for now.
+
 ## Before you use it
 
 - It's an independent companion app. It **doesn't replace the official Litter-Robot app**, isn't affiliated with or endorsed by its maker, and some things (setup, adding devices or pets, some settings) still need the official app. Litter-Robot is a trademark of its owner.
