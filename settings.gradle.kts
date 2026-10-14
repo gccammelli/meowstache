@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Meowstache"
-include(":app")
+include(":app", ":shared")

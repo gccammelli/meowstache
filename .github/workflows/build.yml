@@ -65,3 +65,60 @@ jobs:
             meowstache-${{ github.ref_name }}.apk
             meowstache.apk
           generate_release_notes: true
+
+  # iOS: unsigned .ipa (users sign it with their own Apple ID via SideStore/AltStore) plus simulator
+  # screenshots, all on GitHub's free macOS runners, so no Mac is needed to build.
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Shared tests on the iOS simulator
+        run: ./gradlew :shared:iosSimulatorArm64Test
+
+      - name: Build unsigned .ipa
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj -target iosApp -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build/ios" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p Payload && cp -R build/ios/Release-iphoneos/Meowstache.app Payload/
+          zip -qry meowstache.ipa Payload
+
+      - name: Simulator screenshots (intro, then demo mode)
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj -target iosApp -configuration Debug -sdk iphonesimulator -arch arm64 \
+            SYMROOT="$PWD/build/ios-sim" CODE_SIGNING_ALLOWED=NO build
+          TYPE=$(xcrun simctl list devicetypes | grep -oE 'com.apple.CoreSimulator.SimDeviceType.iPhone-1[0-9](-Pro)?' | tail -1)
+          RUNTIME=$(xcrun simctl list runtimes | grep -oE 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+' | tail -1)
+          DEV=$(xcrun simctl create meow "$TYPE" "$RUNTIME")
+          xcrun simctl boot "$DEV" && xcrun simctl bootstatus "$DEV"
+          xcrun simctl install "$DEV" build/ios-sim/Debug-iphonesimulator/Meowstache.app
+          mkdir -p screenshots
+          xcrun simctl launch "$DEV" io.github.gccammelli.meowstache; sleep 25
+          xcrun simctl io "$DEV" screenshot screenshots/1-intro.png
+          xcrun simctl terminate "$DEV" io.github.gccammelli.meowstache
+          xcrun simctl launch "$DEV" io.github.gccammelli.meowstache --demo; sleep 25
+          xcrun simctl io "$DEV" screenshot screenshots/2-demo-home.png
+          xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Meowstache"' --style compact | tail -100 > screenshots/app-log.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios
+          path: |
+            meowstache.ipa
+            screenshots/
+
+      - name: Attach .ipa to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cp meowstache.ipa "meowstache-${GITHUB_REF_NAME}.ipa"
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: meowstache-${{ github.ref_name }}.ipa
