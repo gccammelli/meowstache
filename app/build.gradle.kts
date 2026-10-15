@@ -13,8 +13,17 @@ android {
         applicationId = "io.github.gccammelli.meowstache"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.1.0-beta"
+        versionCode = 6
+        versionName = "1.1.0-beta2"
+    }
+
+    buildTypes {
+        release {
+            // R8: shrink and optimise code and resources (smaller APK; F-Droid asks for it).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
     }
 
 

@@ -129,7 +129,7 @@ private fun messageIcon(title: String) = when {
 
 // ---------- Account ----------
 
-private const val COFFEE = "https://buymeacoffee.com/meowstache"
+private const val COFFEE = "https://buymeacoffee.com/cammelli"
 /** This version's release page; previews (e.g. "1.1.0-beta") have no tag of their own, so they get the releases list. */
 private fun releaseNotes(version: String) = "https://github.com/gccammelli/meowstache/releases" + if ('-' in version) "" else "/tag/v$version"
 

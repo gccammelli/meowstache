@@ -1,6 +1,6 @@
 # Meowstache
 
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/meowstache)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
 
 The Litter-Robot 4 is the best self-cleaning litter box around. But its maker now puts basic features behind a subscription, and owners haven't taken it well.
 
@@ -52,7 +52,7 @@ It's tested against a real Home Assistant with simulated robots running the firm
 
 Meowstache is free and always will be. Thanks to your support there's now an **iPhone beta** and a real iPhone to test it on. Donations keep development going and pay for the hardware it needs: test devices, an ESP programmer and parts for the open-firmware (local) work.
 
-[Buy me a coffee](https://buymeacoffee.com/meowstache)
+[Buy me a coffee](https://buymeacoffee.com/cammelli)
 
 ## Privacy & security
 
