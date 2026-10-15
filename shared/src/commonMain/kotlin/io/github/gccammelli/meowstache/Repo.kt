@@ -72,11 +72,15 @@ data class LocalData(
     val overrides: Map<Long, String> = emptyMap(), // weight reading time → pet id ("" = unassigned)
 )
 
-/** The "Back up history" file: everything that can't be fetched again once the official servers drop it. */
+/**
+ * The "Back up history" file: everything that can't be fetched again once the official servers drop it.
+ * Adding fields is safe both ways (unknown keys are ignored, missing ones default). Bump [BACKUP_VERSION] only for a
+ * change older apps would misread; they then refuse the file instead of restoring it wrongly.
+ */
 @Serializable
 private data class Backup(
     val app: String? = null, // "meowstache" in every file we write
-    val version: Int = 1,
+    val version: Int = BACKUP_VERSION,
     val owner: String? = null,
     val weights: Map<String, List<Reading>> = emptyMap(),
     val acts: Map<String, List<Act>> = emptyMap(),
@@ -85,6 +89,8 @@ private data class Backup(
 
 @Serializable
 data class Message(val ts: Long, val title: String, val body: String, val read: Boolean = false)
+
+private const val BACKUP_VERSION = 1
 
 private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -200,6 +206,7 @@ object Repo {
     suspend fun importBackup(text: String): Int = refreshLock.withLock {
         val b = backupJson.decodeFromString<Backup>(text)
         require(b.app == "meowstache") { "Not a Meowstache backup" }
+        require(b.version <= BACKUP_VERSION) { "This backup was made by a newer Meowstache: update the app to restore it" }
         require(b.owner == null || api.userId == null || b.owner == api.userId) { "This backup belongs to a different account" }
         state.update { st ->
             st.copy(
