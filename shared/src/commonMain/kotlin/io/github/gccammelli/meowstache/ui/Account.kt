@@ -407,7 +407,15 @@ fun NotificationsScreen(nav: NavHostController) {
                 }
                 Toggle("Errors", t.errors, info = { info = "Errors" to "Robot faults from the activity log (bonnet removed, cat sensor or globe motor fault, battery backup) and the robot going offline for 1 or 24 hours." }) { v -> topics { it.copy(errors = v) } }
                 Toggle("Software Updates", t.updates, info = { info = "Software Updates" to "Tells you when newer firmware is published for your robot. The robot installs updates by itself." }) { v -> topics { it.copy(updates = v) } }
-                Text("Checked by $APP_NAME on this phone every 30 minutes, not pushed by the manufacturer.", color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                var instant by remember { mutableStateOf(Repo.instantNotifications) }
+                if (ctx.canInstantNotifications && !Repo.demo) Toggle("Instant Notifications", instant,
+                    info = { info = "Instant Notifications" to "Keeps a live connection to your robot, the same live updates Home Assistant uses, so " +
+                        "notifications arrive within seconds instead of every 30 minutes. Gentle on Whisker's servers: one connection, and at most one " +
+                        "check every 2 minutes. Android shows a silent notification while it's on. A visit summary still waits for the clean cycle." }) { v ->
+                    instant = v; Repo.setInstantNotifications(v); ctx.syncInstantNotifications()
+                }
+                Text(if (instant && ctx.canInstantNotifications) "Checked by $APP_NAME on this phone as soon as your robot changes, not pushed by the manufacturer."
+                    else "Checked by $APP_NAME on this phone every 30 minutes, not pushed by the manufacturer.", color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
             info?.let { (title, text) -> InfoDialog(title, text) { info = null } }
             Spacer(Modifier.height(14.dp))

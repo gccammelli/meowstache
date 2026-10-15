@@ -39,6 +39,9 @@ interface PlatformUi {
     val appVersion: String
     val buildNumber: Int
     fun openUrl(url: String)
+    /** Instant notifications need a background connection; only Android allows one (see LiveService). */
+    val canInstantNotifications: Boolean get() = false
+    fun syncInstantNotifications() {}
     fun toast(message: String)
     /** Share a text file (CSV export) through the system share sheet. */
     fun shareFile(mime: String, name: String, text: String)

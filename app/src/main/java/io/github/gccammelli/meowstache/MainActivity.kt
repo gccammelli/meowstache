@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity(), PlatformUi {
     override fun onResume() {
         super.onResume()
         if (Repo.signedIn) Repo.refreshIfStale()
+        LiveService.sync(this)
     }
 
     // ---------- PlatformUi ----------
@@ -50,6 +51,9 @@ class MainActivity : ComponentActivity(), PlatformUi {
     override val buildNumber get() = BuildConfig.VERSION_CODE
 
     override fun openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    override val canInstantNotifications get() = true
+    override fun syncInstantNotifications() = LiveService.sync(this)
 
     override fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 

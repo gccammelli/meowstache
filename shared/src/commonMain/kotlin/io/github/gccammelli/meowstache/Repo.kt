@@ -283,6 +283,10 @@ object Repo {
 
     fun refreshAsync() = scope.launch { refresh() }
 
+    /** Instant notifications (GitHub #4, Android): a live connection to the robots instead of the 30-minute check. */
+    val instantNotifications get() = prefs.getBoolean("instant", false)
+    fun setInstantNotifications(on: Boolean) = prefs.putBoolean("instant", on)
+
     /** For app foregrounds: skip when the last refresh is under a minute old, so app switching doesn't hammer Whisker. */
     fun refreshIfStale() { if (nowMs() - state.value.updatedAt > 60_000L) refreshAsync() }
 
