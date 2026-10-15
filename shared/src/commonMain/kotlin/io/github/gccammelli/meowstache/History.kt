@@ -155,6 +155,7 @@ data class RobotTopics(
     val lowLitter: Boolean = true,
     val cycleComplete: Boolean = false,
     val cycleInterrupted: Boolean = false,
+    val visits: Boolean = false, // not an official-app topic: a summary after each cat visit (GitHub #1)
     val maintenance: Boolean = true,
     val errors: Boolean = false,
     val updates: Boolean = false,
@@ -170,7 +171,11 @@ data class RobotSnapshot(
     val setup: Long?,
     val acts: List<Act>,
     val firmwareUpdate: String? = null, // latest version when an update is available
+    val visits: List<VisitNote> = emptyList(),
 )
+
+/** A recent weighing, ready to announce: who (if attributed), the weight as shown, and the visit's estimated minutes. */
+data class VisitNote(val ts: Long, val pet: String?, val weight: String?, val minutes: Double?)
 
 private const val DAY_MS = 86_400_000L
 
@@ -188,6 +193,12 @@ fun robotAlerts(now: Long, r: RobotSnapshot, t: RobotTopics, zone: ZoneId = Zone
         if (t.drawerFull) ev("DFIFullFlagOn", "drawer", "Waste drawer full", "$n's waste drawer is full. Empty it so cleaning cycles keep running.")
         if (t.cycleComplete) ev("robotCycleStatusIdle", "cycle", "Clean cycle complete", "$n finished a clean cycle.")
         if (t.cycleInterrupted) ev("robotCycleStateCatDetect", "interrupted", "Clean cycle interrupted", "$n paused a clean cycle because a cat was detected.")
+        // One summary per visit, once its length is known (the next clean cycle), or after 30 minutes without it.
+        if (t.visits) r.visits.filter { now - it.ts in 0 until 6 * 3_600_000L && (it.minutes != null || now - it.ts > 30 * 60_000L) }.forEach { v ->
+            val at = Instant.ofEpochMilli(v.ts).atZone(zone).toLocalTime()
+            out += PetAlert("robot:visit:${r.serial}:${v.ts}", "", "${v.pet ?: "A cat"} visited $n",
+                listOfNotNull(v.weight, v.minutes?.let { "%.1f min".format(it) }, "at %02d:%02d".format(at.hour, at.minute)).joinToString(" · "))
+        }
         if (t.lowLitter && r.litterState in setOf("LOW", "EMPTY", "REFILL"))
             out += PetAlert("robot:litter:${r.serial}:${now.localDate(zone)}", "", "Low litter", "$n is low on litter. Top it up to the fill line.")
         if (t.maintenance && r.setup != null && now > r.setup) {

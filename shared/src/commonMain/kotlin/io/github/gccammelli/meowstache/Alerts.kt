@@ -21,6 +21,14 @@ fun allAlerts(st: AppState, s: AlertSettings, now: Long = nowMs()): List<PetAler
     return out
 }
 
-fun Robot.snapshot(st: AppState, firmwareUpdate: String? = null) =
-    RobotSnapshot(serial, name, isOnline, lastSeen, litterState, setup, st.acts[serial].orEmpty(), firmwareUpdate)
+fun Robot.snapshot(st: AppState, firmwareUpdate: String? = null): RobotSnapshot {
+    val acts = st.acts[serial].orEmpty()
+    val now = nowMs()
+    val weighings = acts.filter { it.value == "catWeight" && now - it.ts < 6 * 3_600_000L }
+    val minutes = visitDurations(weighings.map { Reading(it.ts, it.actionValue?.toDoubleOrNull() ?: 0.0) }, acts, waitMinutes)
+    val visits = weighings.map { a ->
+        VisitNote(a.ts, Repo.petForWeightAct(a)?.name, a.actionValue?.toDoubleOrNull()?.let { Repo.weight(it) }, minutes[a.ts])
+    }
+    return RobotSnapshot(serial, name, isOnline, lastSeen, litterState, setup, acts, firmwareUpdate, visits)
+}
 
