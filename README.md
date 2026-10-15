@@ -40,7 +40,7 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 Meowstache is free and always will be. Thanks to your support there's now an **iPhone beta** and a real iPhone to test it on. Donations keep development going and pay for the hardware it needs: test devices, an ESP programmer and parts for the open-firmware (local) work.
 
-[Buy me a coffee](https://buymeacoffee.com/meowstache)
+[Buy me a coffee](https://buymeacoffee.com/cammelli)
 
 ## Privacy & security
 
