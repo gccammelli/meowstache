@@ -138,7 +138,7 @@ fun DurationCard(s: AppState, petId: String) {
             }
         }
         Chart(values, b.map { it.label }, ChartKind.BARS, average = values.filterNotNull().takeIf { it.isNotEmpty() }?.average(),
-            tooltip = { "%.1f min".format(it) }, marks = marksFor(b, range, patterns, Metric.DURATION))
+            tooltip = { minSec(it) }, marks = marksFor(b, range, patterns, Metric.DURATION))
         Legend("Minutes" to W.Teal, "Average" to W.Purple)
         PatternFooter(b, range, patterns, Metric.DURATION)
     }

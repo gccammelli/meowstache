@@ -232,7 +232,7 @@ fun robotAlerts(now: Long, r: RobotSnapshot, t: RobotTopics, zone: ZoneId = Zone
         if (t.visits) r.visits.filter { now - it.ts in 0 until 6 * 3_600_000L && (it.minutes != null || now - it.ts > 30 * 60_000L) }.forEach { v ->
             val at = Instant.ofEpochMilli(v.ts).atZone(zone).toLocalTime()
             out += PetAlert("robot:visit:${r.serial}:${v.ts}", "", "${v.pet ?: "A cat"} visited $n",
-                listOfNotNull(v.weight, v.minutes?.let { "%.1f min".format(it) }, "at %02d:%02d".format(at.hour, at.minute)).joinToString(" · "))
+                listOfNotNull(v.weight, v.minutes?.let(::minSec), "at %02d:%02d".format(at.hour, at.minute)).joinToString(" · "))
         }
         if (t.lowLitter && r.litterState in setOf("LOW", "EMPTY", "REFILL"))
             out += PetAlert("robot:litter:${r.serial}:${now.localDate(zone)}", "", "Low litter", "$n is low on litter. Top it up to the fill line.")
@@ -405,10 +405,16 @@ fun recapLine(name: String, s: DayStats, weight: (Double) -> String, zone: ZoneI
     val parts = listOfNotNull(
         "${s.visits.size} visit${if (s.visits.size > 1) "s" else ""}",
         s.meanLbs?.let(weight),
-        s.totalMinutes?.let { "%.1f min".format(it) },
+        s.totalMinutes?.let(::minSec),
         s.peakHour(zone)?.let { "peak ${hourLabel(it)}" },
     )
     return "$name: ${parts.joinToString(" · ")}"
+}
+
+/** A visit length as minutes and seconds: "2m 13s", or "48s" under a minute. */
+fun minSec(minutes: Double): String {
+    val total = kotlin.math.round(minutes * 60).toLong()
+    return if (total < 60) "${total}s" else "${total / 60}m ${total % 60}s"
 }
 
 fun hourLabel(h: Int) = when { h == 0 -> "12am"; h < 12 -> "${h}am"; h == 12 -> "12pm"; else -> "${h - 12}pm" }
