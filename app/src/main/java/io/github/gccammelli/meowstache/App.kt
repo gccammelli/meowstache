@@ -33,26 +33,32 @@ class App : Application() {
     }
 }
 
+/** One alert check: refresh (incremental), evaluate every rule, post what's new. False if the refresh failed. */
+suspend fun checkAlerts(ctx: Context): Boolean {
+    val s = Repo.alerts.value
+    val t = s.robot
+    if (!s.noVisitEnabled && !s.tooManyEnabled && s.targets.isEmpty() && !s.patternsEnabled && !s.recapEnabled && !t.usage && !t.errors && !t.updates)
+        return true
+    // Full refresh: recaps and patterns need fresh activity for visit durations (incremental, so cheap).
+    Repo.refresh(full = true)
+    val st = Repo.state.value
+    if (st.error != null) return false
+    val alerts = allAlerts(st, s).toMutableList()
+    if (t.updates && Repo.firmwareCheckDue()) for (r in st.robots) {
+        val latest = Repo.latestFirmware(r) ?: continue
+        if ("Update available" in latest) alerts += robotAlerts(System.currentTimeMillis(), r.snapshot(st, latest.lines().first()), t.copy(usage = false, errors = false))
+    }
+    AlertWorker.notifyNew(ctx, alerts)
+    return true
+}
+
 /** Checks the pet alert rules every 30 minutes and posts each new alert once. */
 class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         Repo.init(androidStorage(applicationContext))
         if (!Repo.canCheckAlerts) return Result.success()
-        val s = Repo.alerts.value
-        val t = s.robot
-        if (!s.noVisitEnabled && !s.tooManyEnabled && s.targets.isEmpty() && !s.patternsEnabled && !s.recapEnabled && !t.usage && !t.errors && !t.updates)
-            return Result.success()
-        // Full refresh: recaps and patterns need fresh activity for visit durations (incremental, so cheap).
-        Repo.refresh(full = true)
-        val st = Repo.state.value
-        if (st.error != null) return Result.retry()
-        val alerts = allAlerts(st, s).toMutableList()
-        if (t.updates && Repo.firmwareCheckDue()) for (r in st.robots) {
-            val latest = Repo.latestFirmware(r) ?: continue
-            if ("Update available" in latest) alerts += robotAlerts(System.currentTimeMillis(), r.snapshot(st, latest.lines().first()), t.copy(usage = false, errors = false))
-        }
-        notifyNew(applicationContext, alerts)
-        return Result.success()
+        if (LiveService.connected()) return Result.success() // instant notifications are on and connected: nothing to poll
+        return if (checkAlerts(applicationContext)) Result.success() else Result.retry()
     }
 
     companion object {

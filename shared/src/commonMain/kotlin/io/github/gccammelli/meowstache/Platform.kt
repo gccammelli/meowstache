@@ -41,6 +41,9 @@ interface PlatformUi {
     fun openUrl(url: String)
     /** Plays a video link (visit videos); by default the system opens it (Safari plays MP4 itself). */
     fun playVideo(url: String) = openUrl(url)
+    /** Instant notifications need a background connection; only Android allows one (see LiveService). */
+    val canInstantNotifications: Boolean get() = false
+    fun syncInstantNotifications() {}
     fun toast(message: String)
     /** Share a text file (CSV export) through the system share sheet. */
     fun shareFile(mime: String, name: String, text: String)

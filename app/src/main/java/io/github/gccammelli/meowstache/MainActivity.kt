@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity(), PlatformUi {
     override fun onResume() {
         super.onResume()
         if (Repo.signedIn) Repo.refreshIfStale()
+        LiveService.sync(this)
     }
 
     // ---------- PlatformUi ----------
@@ -67,6 +68,9 @@ class MainActivity : ComponentActivity(), PlatformUi {
         video.setVideoURI(Uri.parse(url))
         dialog.show()
     }
+
+    override val canInstantNotifications get() = true
+    override fun syncInstantNotifications() = LiveService.sync(this)
 
     override fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 

@@ -369,6 +369,10 @@ object Repo {
     /** For work started from a dialog that closes right away (a dialog's own scope would cancel it). */
     fun launch(block: suspend () -> Unit) = scope.launch { block() }
 
+    /** Instant notifications (GitHub #4, Android): a live connection to the robots instead of the 30-minute check. */
+    val instantNotifications get() = prefs.getBoolean("instant", false)
+    fun setInstantNotifications(on: Boolean) = prefs.putBoolean("instant", on)
+
     /** For app foregrounds: skip when the last refresh is under a minute old, so app switching doesn't hammer Whisker. */
     fun refreshIfStale() { if (nowMs() - state.value.updatedAt > 60_000L) refreshAsync() }
 
