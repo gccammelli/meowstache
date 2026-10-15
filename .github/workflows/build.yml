@@ -1,16 +1,22 @@
 # Builds and tests every push and pull request. A "v*" tag also builds the signed APK
 # and publishes it as a GitHub Release, so nobody has to wait for F-Droid.
+# A push to local-mode publishes the preview: the APK as soon as it's built, the .ipa when the iOS job ends.
 name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, local-mode]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# A newer push replaces a run still in progress, so an older build never overwrites a newer preview.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -36,12 +42,39 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "MEOWSTACHE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Build release APK
+      - name: Decode preview signing key
+        # Previews use their own test key (Android's standard debug-key passwords), so they install over each other.
+        if: github.ref == 'refs/heads/local-mode'
         env:
-          MEOWSTACHE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          MEOWSTACHE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          MEOWSTACHE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+          BETA_KEYSTORE_BASE64: ${{ secrets.BETA_KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$BETA_KEYSTORE_BASE64" ] || { echo "::error::Add the BETA_KEYSTORE_BASE64 secret (base64 of the preview keystore)"; exit 1; }
+          echo "$BETA_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/beta.jks"
+          {
+            echo "MEOWSTACHE_KEYSTORE=$RUNNER_TEMP/beta.jks"
+            echo "MEOWSTACHE_KEYSTORE_PASSWORD=android"
+            echo "MEOWSTACHE_KEY_ALIAS=androiddebugkey"
+            echo "MEOWSTACHE_KEY_PASSWORD=android"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            export MEOWSTACHE_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" MEOWSTACHE_KEY_ALIAS="$KEY_ALIAS" MEOWSTACHE_KEY_PASSWORD="$KEY_PASSWORD"
+          fi
+          ./gradlew assembleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Publish the preview APK
+        if: github.ref == 'refs/heads/local-mode'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .github/publish-preview.sh app/build/outputs/apk/release/app-release.apk apk
+          git tag -f preview-local-mode && git push -f origin refs/tags/preview-local-mode
 
       - name: Name the APK
         if: startsWith(github.ref, 'refs/tags/v')
@@ -116,6 +149,12 @@ jobs:
           path: |
             meowstache.ipa
             screenshots/
+
+      - name: Publish the preview .ipa
+        if: github.ref == 'refs/heads/local-mode'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/publish-preview.sh meowstache.ipa ipa
 
       - name: Attach .ipa to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
