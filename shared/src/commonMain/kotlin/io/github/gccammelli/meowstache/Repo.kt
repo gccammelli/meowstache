@@ -38,8 +38,8 @@ data class AppState(
 
     /** Estimated minutes per visit, keyed by reading timestamp. */
     fun durations(petId: String): Map<Long, Double> = durationCache.getOrPut(petId) {
-        val robot = robots.firstOrNull() ?: return@getOrPut emptyMap()
-        visitDurations(history[petId].orEmpty(), acts[robot.serial].orEmpty(), robot.waitMinutes)
+        // Each robot's own spans (a pet can use several robots).
+        robots.fold(emptyMap()) { acc, r -> acc + visitDurations(history[petId].orEmpty(), acts[r.serial].orEmpty(), r.waitMinutes) }
     }
     private val durationCache = HashMap<String, Map<Long, Double>>()
 }
@@ -197,10 +197,15 @@ object Repo {
     }
     fun reassign(ts: Long, petId: String) = updateLocal { it.copy(overrides = it.overrides + (ts to petId)) }
     /** The key a weight override uses for an activity "catWeight" row: the matching reading's time, or an existing override's. */
-    fun readingKey(a: Act): Long {
-        val near = { ts: Long -> kotlin.math.abs(ts - a.ts) < 120_000 }
-        return local.value.overrides.keys.firstOrNull(near) ?: state.value.history.values.flatten().firstOrNull { near(it.ts) }?.ts ?: a.ts
-    }
+    fun readingKey(a: Act): Long =
+        nearest(local.value.overrides.keys, a.ts) { it } ?: nearest(state.value.history.values.flatten(), a.ts) { it.ts }?.ts ?: a.ts
+
+    /**
+     * The item closest in time to [ts], within 2 minutes (API weighings and activity rows differ by seconds).
+     * Closest, not first: two cats weighed back to back can be under 2 minutes apart.
+     */
+    private fun <T> nearest(items: Iterable<T>, ts: Long, time: (T) -> Long): T? =
+        items.filter { kotlin.math.abs(time(it) - ts) < 120_000 }.minByOrNull { kotlin.math.abs(time(it) - ts) }
     fun scoopsSaved(r: Robot) = (r.scoopsSaved - (local.value.scoopsBase[r.serial] ?: 0)).coerceAtLeast(0)
 
     /**
@@ -417,7 +422,8 @@ object Repo {
     /** Matches a robot "catWeight" row to the pet whose SmartScale reading has the same time. */
     fun petForWeightAct(a: Act): Pet? {
         val s = state.value
-        return s.pets.firstOrNull { p -> s.history[p.id].orEmpty().any { kotlin.math.abs(it.ts - a.ts) < 120_000 } }
+        val owner = nearest(s.pets.flatMap { p -> s.history[p.id].orEmpty().map { p to it } }, a.ts) { it.second.ts } ?: return null
+        return owner.first
     }
 
     fun signal(rssi: Int?) = when {

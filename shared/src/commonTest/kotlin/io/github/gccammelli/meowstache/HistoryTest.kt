@@ -190,4 +190,26 @@ class HistoryTest {
         assertEquals("robot:visit:S1:${now - 10 * min}", on[0].key) // stable key: the worker sends it once
         assertEquals(emptyList(), robotAlerts(now, snap, RobotTopics(usage = true, visits = false), ZoneId.of("UTC")).filter { "visited" in it.title })
     }
+
+    /** Two cats back to back (from real activity data) share one "cat detected" and one cycle; each gets its own visit. */
+    @Test
+    fun backToBackVisitsAreSplit() {
+        val s = 1_000L; val m = 60 * s
+        fun at(h: Int, mi: Int, se: Int) = ((h * 60 + mi) * 60 + se) * s
+        val acts = listOf(
+            Act(at(10, 56, 6), "robotStatusCatDetect"), Act(at(10, 57, 10), "catWeight", "8.02"),
+            Act(at(11, 6, 10), "catWeight", "11.40"), Act(at(11, 14, 11), "robotCycleStatusDump"),
+            // a single-cat span elsewhere, which teaches the timings: weighed 66 s after detection, left 60 s later
+            Act(at(9, 13, 51), "robotStatusCatDetect"), Act(at(9, 14, 57), "catWeight", "8.60"), Act(at(9, 22, 57), "robotCycleStatusDump"),
+        )
+        val d = weighingMinutes(acts, waitMin = 7)
+        val first = d.getValue(at(10, 57, 10)); val second = d.getValue(at(11, 6, 10))
+        assertTrue(first < 3.0, "The first cat left soon after its weighing, not when the robot cycled: $first")
+        assertTrue(second < 3.0, "The second cat arrived shortly before its weighing: $second")
+        assertTrue(first != second || first < 3.0)
+        // The single visit keeps the old estimate (detect to cycle minus wait, plus the 9 s detection lag).
+        assertEquals((2 * m + 6 * s + 9 * s) / 60_000.0, d.getValue(at(9, 14, 57)), 0.001)
+        // A pet's API reading a few seconds off its activity row still finds its visit.
+        assertEquals(first, visitDurations(listOf(Reading(at(10, 57, 14), 8.02)), acts, 7).values.single(), 0.0)
+    }
 }

@@ -73,15 +73,50 @@ fun dayReadings(readings: List<Reading>, day: LocalDate, zone: ZoneId = ZoneId.s
 private const val DETECT_LAG_MS = 9_000L
 
 fun visitDurations(weights: List<Reading>, acts: List<Act>, waitMin: Int): Map<Long, Double> {
+    // Readings with no activity row of their own count as weighings at their own time.
+    val rows = acts.filter { it.value == "catWeight" }.map { it.ts }
+    val extra = weights.filter { w -> rows.none { kotlin.math.abs(it - w.ts) < 120_000 } }.map { Act(it.ts, "catWeight") }
+    val perWeighing = weighingMinutes(acts + extra, waitMin)
+    val times = perWeighing.keys
+    val out = HashMap<Long, Double>()
+    for (w in weights) {
+        // A pet's reading may come from the weight API, seconds off its activity row: use the nearest row.
+        val t = times.filter { kotlin.math.abs(it - w.ts) < 120_000 }.minByOrNull { kotlin.math.abs(it - w.ts) } ?: continue
+        out[w.ts] = perWeighing.getValue(t)
+    }
+    return out
+}
+
+/**
+ * Minutes per "catWeight" activity row. One span runs from a "cat detected" to the next clean cycle; usually it holds
+ * one weighing. When cats go back to back the robot logs one detection and one cycle for all of them, so the span is
+ * split: each cat arrives about [lag] before its weighing (but not before the previous cat left), and every cat but the
+ * last leaves about [tail] after its weighing (but before the next one arrived). [lag] and [tail] are this robot's
+ * own medians from single-cat spans, so they follow its sensor timing.
+ */
+fun weighingMinutes(acts: List<Act>, waitMin: Int): Map<Long, Double> {
     val detects = acts.filter { it.value == "robotStatusCatDetect" }.map { it.ts }.sorted()
     val dumps = acts.filter { it.value == "robotCycleStatusDump" }.map { it.ts }.sorted()
     val wait = waitMin * 60_000L
+    val spans = acts.filter { it.value == "catWeight" }.map { it.ts }.sorted().mapNotNull { w ->
+        val start = detects.lastOrNull { it <= w && w - it < 15 * 60_000 } ?: return@mapNotNull null
+        val dump = dumps.firstOrNull { it > w && it - w < 90 * 60_000 } ?: return@mapNotNull null
+        Triple(start, dump, w)
+    }.groupBy({ it.first to it.second }, { it.third })
+    fun median(xs: List<Long>, fallback: Long) = xs.sorted().let { if (it.isEmpty()) fallback else it[it.size / 2] }
+    val singles = spans.filter { it.value.size == 1 }
+    val lag = median(singles.map { (k, ws) -> ws[0] - k.first }, 70_000L).coerceIn(20_000L, 180_000L)
+    val tail = median(singles.map { (k, ws) -> maxOf(k.second - wait, ws[0]) - ws[0] }, 60_000L).coerceIn(0L, 300_000L)
     val out = HashMap<Long, Double>()
-    for (w in weights) {
-        val start = detects.lastOrNull { it <= w.ts && w.ts - it < 15 * 60_000 } ?: continue
-        val dump = dumps.firstOrNull { it > w.ts && it - w.ts < 90 * 60_000 } ?: continue
-        val leave = maxOf(dump - wait, w.ts)
-        out[w.ts] = (leave - start + DETECT_LAG_MS) / 60_000.0
+    for ((k, ws) in spans) {
+        val (detect, dump) = k
+        var prevEnd = detect
+        ws.forEachIndexed { i, w ->
+            val start = if (i == 0) detect else maxOf(prevEnd, w - lag)
+            val end = if (i == ws.lastIndex) maxOf(dump - wait, w) else minOf(w + tail, ws[i + 1] - lag).coerceAtLeast(w)
+            out[w] = (end - start + DETECT_LAG_MS) / 60_000.0
+            prevEnd = end
+        }
     }
     return out
 }
