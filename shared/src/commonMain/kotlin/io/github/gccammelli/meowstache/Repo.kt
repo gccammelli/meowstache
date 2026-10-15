@@ -160,6 +160,43 @@ object Repo {
         state.value = AppState(overrides = local().overrides)
         loadCache()
     }
+    // ---------- visit videos (GitHub #3) ----------
+
+    val clips = MutableStateFlow<List<Clip>>(emptyList())
+    /** The Home Assistant media folder holding the clips; null = visit videos off. */
+    val clipsFolder get() = prefs.getString("clipsFolder")
+    /** Local mode reuses its Home Assistant; Whisker mode has its own connection, for videos only. */
+    private fun clipsHa(): HaBackend? = when {
+        demo -> null
+        localMode -> runCatching { ha().backend }.getOrNull()
+        else -> prefs.getString("camUrl")?.let { u -> secrets.get("camToken")?.let { HaHttp(u, it) } }
+    }
+
+    private suspend fun loadClips() {
+        val folder = clipsFolder ?: return run { clips.value = emptyList() }
+        val b = clipsHa() ?: return
+        runCatching { b.clips(folder) }.onSuccess { clips.value = it } // offline or away from home: keep the last list
+    }
+
+    /** Checks the folder (and, in Whisker mode, the address and token), then keeps them. Returns the number of clips found. */
+    suspend fun setVideos(folder: String, url: String? = null, rawToken: String? = null): Int {
+        val f = folder.trim().trim('/').ifEmpty { throw ApiException("Enter the media folder's name") }
+        val b = if (localMode) ha().backend else HaHttp(url.orEmpty(), rawToken.orEmpty().filterNot { it.isWhitespace() })
+        val found = b.clips(f)
+        if (!localMode) { prefs.putString("camUrl", b.base); secrets.set("camToken", rawToken!!.filterNot { it.isWhitespace() }) }
+        prefs.putString("clipsFolder", f)
+        clips.value = found
+        return found.size
+    }
+
+    fun videosOff() {
+        listOf("clipsFolder", "camUrl").forEach { prefs.putString(it, null) }
+        secrets.set("camToken", null)
+        clips.value = emptyList()
+    }
+
+    suspend fun clipUrl(c: Clip): String = (clipsHa() ?: throw ApiException("Visit videos aren't connected")).clipUrl(c)
+
     private var ha: LocalHa? = null
     private fun ha(): LocalHa = ha ?: LocalHa(
         if (demo) FakeHomeAssistant()
@@ -326,7 +363,7 @@ object Repo {
 
     // ---------- loading ----------
 
-    fun refreshAsync() = scope.launch { refresh() }
+    fun refreshAsync() = scope.launch { refresh(); loadClips() }
     /** For work started from a dialog that closes right away (a dialog's own scope would cancel it). */
     fun launch(block: suspend () -> Unit) = scope.launch { block() }
 

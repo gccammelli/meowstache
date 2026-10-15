@@ -42,6 +42,10 @@ Robots running Joseph DiGiovanni's community [ESPHome firmware](https://codeberg
 
 It's tested against a real Home Assistant with simulated robots running the firmware's own cat tracker ([tools/local-mock](tools/local-mock)), not yet against a real flashed robot. Testers very welcome.
 
+## Visit videos (optional)
+
+Have a camera on the litter box? With a Home Assistant automation saving a clip of each visit, Meowstache adds a play button to the visit on the timeline. It works signed in with Whisker or in local mode, with any camera Home Assistant has (Ring included). Setup: [docs/visit-videos.md](docs/visit-videos.md).
+
 ## Before you use it
 
 - It's an independent companion app. It **doesn't replace the official Litter-Robot app**, isn't affiliated with or endorsed by its maker, and some things (setup, adding devices or pets, some settings) still need the official app. Litter-Robot is a trademark of its owner.

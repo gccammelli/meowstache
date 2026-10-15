@@ -9,6 +9,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -139,6 +142,7 @@ fun AccountScreen(nav: NavHostController) {
     var login by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
     var diag by remember { mutableStateOf(false) }
+    var videos by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun toast(t: String) = ctx.toast(t)
     Screen({ BackTopBar("Account", { nav.popBackStack() }) }) {
@@ -173,6 +177,8 @@ fun AccountScreen(nav: NavHostController) {
                 ListRow("Back up history", "Save every weighing and setting to a file", {
                     ctx.saveFile("meowstache-${LocalDate.now()}.json", Repo.exportBackup()) { e -> toast(if (e == null) "History backed up" else "Backup failed: ${e.message}") }
                 }, icon = Icons.Filled.Backup, divider = true)
+                if (!Repo.demo) ListRow("Visit Videos", Repo.clipsFolder?.let { "Home Assistant media › $it" } ?: "A camera clip for each visit, from Home Assistant", { videos = true },
+                    icon = Icons.Filled.Videocam, divider = true)
                 if (Repo.localMode) ListRow("Home Assistant diagnostics", "Save what Meowstache sees, to send with a bug report", { diag = true },
                     icon = Icons.Filled.BugReport, divider = true)
                 ListRow("Restore history", "Merge a backup file into this phone", {
@@ -211,6 +217,7 @@ fun AccountScreen(nav: NavHostController) {
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
         }
     }
+    if (videos) VideosDialog { videos = false }
     if (diag) ConfirmDialog("Home Assistant diagnostics",
         "Saves a file with what Meowstache reads from Home Assistant about your robots: their entities, current values and the last day of history, " +
             "plus how the app understood them. It includes robot and cat names and weights, but not your token or Home Assistant's address. " +
@@ -531,6 +538,60 @@ private fun TargetDialog(name: String, startLbs: Double?, isSet: Boolean, onSave
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = { if (isSet) onSave(null); onDismiss() }) {
                 Text(if (isSet) "Turn off" else "Cancel", color = W.Text2)
+            }
+        },
+    )
+}
+
+/** Visit videos (GitHub #3): which Home Assistant media folder holds the clips; Whisker mode also needs the address and a token. */
+@Composable
+private fun VideosDialog(onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current; val scope = rememberCoroutineScope()
+    var folder by remember { mutableStateOf(Repo.clipsFolder ?: "meowstache") }
+    var url by remember { mutableStateOf("http://homeassistant.local:8123") }
+    var token by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val cloud = !Repo.localMode
+    val colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = W.Accent, unfocusedBorderColor = W.Muted, focusedLabelColor = W.Accent,
+        cursorColor = W.Accent, focusedTextColor = W.Text, unfocusedTextColor = W.Text,
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss, containerColor = W.Card,
+        title = { Text("Visit Videos", color = W.Text) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("A Home Assistant automation saves a clip when a cat shows up; $APP_NAME adds a play button to that visit. " +
+                    "Works with any camera in Home Assistant, Ring included.", color = W.Text2, fontSize = 13.sp)
+                Text("Setup guide", color = W.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp).clickable { ctx.openUrl("https://github.com/gccammelli/meowstache/blob/main/docs/visit-videos.md") })
+                if (cloud) {
+                    androidx.compose.material3.OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth().padding(top = 12.dp),
+                        label = { Text("Home Assistant address") }, singleLine = true, colors = colors)
+                    androidx.compose.material3.OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
+                        label = { Text("Long-lived access token") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), colors = colors)
+                }
+                androidx.compose.material3.OutlinedTextField(folder, { folder = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("Media folder") }, singleLine = true, colors = colors)
+                error?.let { Text(it, color = W.Red, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = !busy && folder.isNotBlank() && (!cloud || token.isNotBlank()), onClick = {
+                busy = true; error = null
+                scope.launch {
+                    runCatching { Repo.setVideos(folder, url, token) }
+                        .onSuccess { ctx.toast("Connected · $it video${if (it == 1) "" else "s"} found"); onDismiss() }
+                        .onFailure { error = it.message ?: "Couldn't connect" }
+                    busy = false
+                }
+            }) { Text(if (busy) "Checking…" else "Save", color = W.Accent) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = { if (Repo.clipsFolder != null) Repo.videosOff(); onDismiss() }) {
+                Text(if (Repo.clipsFolder != null) "Turn off" else "Cancel", color = W.Text2)
             }
         },
     )

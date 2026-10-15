@@ -39,6 +39,8 @@ interface PlatformUi {
     val appVersion: String
     val buildNumber: Int
     fun openUrl(url: String)
+    /** Plays a video link (visit videos); by default the system opens it (Safari plays MP4 itself). */
+    fun playVideo(url: String) = openUrl(url)
     fun toast(message: String)
     /** Share a text file (CSV export) through the system share sheet. */
     fun shareFile(mime: String, name: String, text: String)

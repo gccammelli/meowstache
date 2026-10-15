@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -207,9 +208,14 @@ private fun hopperLabel(r: Robot): Pair<String, Long> = when {
 
 @Composable
 private fun HistoryTab(r: Robot) {
-    val s = state(); val ctx = LocalPlatform.current
+    val s = state(); val ctx = LocalPlatform.current; val scope = rememberCoroutineScope()
     val acts = s.acts[r.serial].orEmpty()
     val visible = remember(acts) { acts.filter { actLabel(it) != null } }
+    val clips by Repo.clips.collectAsState()
+    // Opens the visit's video (GitHub #3) in the phone's player or browser, through a link Home Assistant signs.
+    fun play(c: io.github.gccammelli.meowstache.Clip) = scope.launch {
+        runCatching { Repo.clipUrl(c) }.onSuccess(ctx::playVideo).onFailure { ctx.toast("Couldn't open the video: ${it.message}") }
+    }
     // Each weighing's visit length (same estimate as the daily recap), keyed by its time (GitHub #2).
     val visitMin = remember(acts, r.waitMinutes) {
         visitDurations(acts.filter { it.value == "catWeight" }.map { Reading(it.ts, it.actionValue?.toDoubleOrNull() ?: 0.0) }, acts, r.waitMinutes)
@@ -241,7 +247,8 @@ private fun HistoryTab(r: Robot) {
         }
         Text("Device Activity", color = W.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
         WCard(Modifier.fillMaxWidth()) {
-            visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null, visitMin[a.ts]) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
+            visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null, visitMin[a.ts],
+                clipFor(a.ts, clips)?.takeIf { a.value == "catWeight" }?.let { c -> { play(c) } }) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
             if (visible.isEmpty()) Text(if (s.historyLoading) "Loading full history…" else "No activity yet", color = W.Muted)
             if (visible.size > shown) Text("See More", color = W.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clickable { shown += 25 }.padding(12.dp))
@@ -296,7 +303,7 @@ private fun CycleStat(value: String, label: String, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visitMinutes: Double?, onMenu: () -> Unit) {
+private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visitMinutes: Double?, onPlay: (() -> Unit)?, onMenu: () -> Unit) {
     val label = actLabel(a) ?: return
     if (a.value == "catWeight") {
         val lbs = a.actionValue?.toDoubleOrNull()
@@ -308,7 +315,10 @@ private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visit
                 }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             },
             lines = listOfNotNull(pet?.name ?: "Unassigned", visitMinutes?.let { "Visit: ≈ ${minSec(it)}" }, fmtAt(a.ts)),
-            trailing = { Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable(onClick = onMenu).padding(8.dp)) },
+            trailing = {
+                if (onPlay != null) Icon(Icons.Filled.PlayCircle, "Play the visit's video", tint = W.Accent, modifier = Modifier.clickable(onClick = onPlay).padding(8.dp))
+                Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable(onClick = onMenu).padding(8.dp))
+            },
         )
     } else {
         val icon = when (a.value) {

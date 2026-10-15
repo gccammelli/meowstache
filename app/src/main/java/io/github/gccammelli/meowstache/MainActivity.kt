@@ -51,6 +51,23 @@ class MainActivity : ComponentActivity(), PlatformUi {
 
     override fun openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
+    /** In-app, with the platform's VideoView: the phone's default video app may want storage access just to stream (MX Player does). */
+    override fun playVideo(url: String) {
+        val video = android.widget.VideoView(this)
+        val box = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            addView(video, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER))
+        }
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(box)
+        video.setMediaController(android.widget.MediaController(this).also { it.setAnchorView(video) })
+        video.setOnPreparedListener { video.start() }
+        video.setOnErrorListener { _, _, _ -> toast("Couldn't play the video"); dialog.dismiss(); true }
+        dialog.setOnDismissListener { video.stopPlayback() }
+        video.setVideoURI(Uri.parse(url))
+        dialog.show()
+    }
+
     override fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     override fun shareFile(mime: String, name: String, text: String) {

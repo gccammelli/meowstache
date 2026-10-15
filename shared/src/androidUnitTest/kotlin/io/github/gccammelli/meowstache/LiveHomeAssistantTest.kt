@@ -88,4 +88,18 @@ class LiveHomeAssistantTest {
         println("non-admin rename: ${e?.message}")
         assertTrue(e?.message?.contains("administrator") == true)
     }
+
+    /** Visit videos (GitHub #3): needs an MP4 named like "2026-10-15T17-09-33Z.mp4" in the test Home Assistant's media/meowstache. */
+    @Test
+    fun listsAndResolvesVisitVideos() = runTest(timeout = 2.minutes) {
+        val url = System.getenv("MEOWSTACHE_HA_URL") ?: return@runTest
+        val ha = HaHttp(url, System.getenv("MEOWSTACHE_HA_TOKEN")!!)
+        val clips = ha.clips("meowstache")
+        println("clips $clips")
+        assertTrue(clips.isNotEmpty() && clips.all { it.id.endsWith(".mp4") })
+        val link = ha.clipUrl(clips.last())
+        val head = java.net.URL(link).openConnection() as java.net.HttpURLConnection // signed: no token sent
+        println("clip ${head.responseCode} ${head.contentType} ${head.contentLength} bytes")
+        assertTrue(head.responseCode == 200 && head.contentType == "video/mp4" && "authSig=" in link)
+    }
 }
