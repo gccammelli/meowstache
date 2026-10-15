@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.gccammelli.meowstache"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.1.0-beta4"
+        versionCode = 9
+        versionName = "1.1.0-beta5"
     }
 
     buildTypes {
