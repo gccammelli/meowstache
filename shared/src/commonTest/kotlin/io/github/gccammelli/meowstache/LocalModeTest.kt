@@ -95,9 +95,10 @@ class LocalModeTest {
         // Visit durations come out of the rebuilt activity like the cloud's.
         val st = AppState(robots = snap.robots, pets = snap.pets, weights = snap.weights, acts = snap.acts)
         val d = st.durations("ha-mochi")
-        assertTrue(d.size > snap.weights.getValue("ha-mochi").size * 9 / 10)
+        assertTrue(d.size > snap.weights.getValue("ha-mochi").size * 9 / 10, "durations ${d.size} of ${snap.weights.getValue("ha-mochi").size}")
         val odd = { m: Map<Long, Double> -> m.values.count { it !in 3.0..7.5 } } // the demo data has a few overlapping visits
-        assertTrue(odd(d) <= odd(demo.durations("demo-mochi")))
+        // Overlapping demo visits are split between cats now; allow a little slack between the two rebuilds.
+        assertTrue(odd(d) <= odd(demo.durations("demo-mochi")) + d.size / 50, "odd local ${odd(d)} vs cloud ${odd(demo.durations("demo-mochi"))} of ${d.size}")
     }
 
     @Test
