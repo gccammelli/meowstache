@@ -302,7 +302,7 @@ private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visit
                     append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(lbs).replace(" ", "")) }
                 }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             },
-            lines = listOfNotNull(pet?.name ?: "Unassigned", visitMinutes?.let { "Visit: ≈ %.1f min".format(it) }, fmtAt(a.ts)),
+            lines = listOfNotNull(pet?.name ?: "Unassigned", visitMinutes?.let { "Visit: ≈ ${minSec(it)}" }, fmtAt(a.ts)),
             trailing = { Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable(onClick = onMenu).padding(8.dp)) },
         )
     } else {

@@ -637,7 +637,7 @@ fun ScaleDetailsScreen(nav: NavHostController, id: String) {
                     Text(buildAnnotatedString {
                         append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(it.lbs)) }
                     }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ %.1f min".format(m) }, fmtAt(it.ts)))
+                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)))
             }
         }
     }
@@ -665,7 +665,7 @@ fun VisitDetailsScreen(nav: NavHostController, id: String) {
             HistoryList("Recent Visit History", r.asReversed(), shown, { shown += 20 }) {
                 EventRow(onClick = { nav.navigate("visit/$id/${it.ts}") },leading = { CircleIcon(Icons.Filled.Scale, W.Green, Color(0xFF1E1E1E), 34.dp) },
                     title = { Text("Pet Visit Recorded", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ %.1f min".format(m) }))
+                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }))
             }
         }
     }

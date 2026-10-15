@@ -127,7 +127,7 @@ class HistoryTest {
         val st = dayStats(r, d, LocalDate.of(2026, 10, 12), z)
         assertEquals(23, st.peakHour(z))
         assertEquals(5.3, st.totalMinutes!!, 1e-9)
-        assertEquals("Mochi: 3 visits · 10.8 · 5.3 min · peak 11pm", recapLine("Mochi", st, fmt, z))
+        assertEquals("Mochi: 3 visits · 10.8 · 5m 18s · peak 11pm", recapLine("Mochi", st, fmt, z))
     }
 
     @Test fun weightOverridesMoveAndDrop() {
@@ -186,7 +186,7 @@ class HistoryTest {
         ))
         val on = robotAlerts(now, snap, RobotTopics(usage = true, visits = true), ZoneId.of("UTC"))
         assertEquals(listOf("Mochi visited Robbie", "A cat visited Robbie"), on.map { it.title })
-        assertEquals("5.0 kg · 5.3 min · at 07:50", on[0].body) // now - 10 min = 2027-01-15 07:50 UTC
+        assertEquals("5.0 kg · 5m 18s · at 07:50", on[0].body) // now - 10 min = 2027-01-15 07:50 UTC
         assertEquals("robot:visit:S1:${now - 10 * min}", on[0].key) // stable key: the worker sends it once
         assertEquals(emptyList(), robotAlerts(now, snap, RobotTopics(usage = true, visits = false), ZoneId.of("UTC")).filter { "visited" in it.title })
     }
@@ -211,5 +211,12 @@ class HistoryTest {
         assertEquals((2 * m + 6 * s + 9 * s) / 60_000.0, d.getValue(at(9, 14, 57)), 0.001)
         // A pet's API reading a few seconds off its activity row still finds its visit.
         assertEquals(first, visitDurations(listOf(Reading(at(10, 57, 14), 8.02)), acts, 7).values.single(), 0.0)
+    }
+
+    @Test fun minutesAndSeconds() {
+        assertEquals("48s", minSec(0.8))
+        assertEquals("1m 0s", minSec(1.0))
+        assertEquals("2m 13s", minSec(2.2167))
+        assertEquals("11m 12s", minSec(11.2))
     }
 }
