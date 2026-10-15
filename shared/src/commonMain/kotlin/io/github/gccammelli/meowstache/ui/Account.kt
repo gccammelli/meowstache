@@ -400,7 +400,7 @@ fun NotificationsScreen(nav: NavHostController) {
                     Toggle("Clean Cycle Complete", t.cycleComplete, enabled = t.usage) { v -> topics { it.copy(cycleComplete = v) } }
                     Toggle("Clean Cycle Interrupted", t.cycleInterrupted, enabled = t.usage) { v -> topics { it.copy(cycleInterrupted = v) } }
                     Toggle("Cat Visit Summary", t.visits, enabled = t.usage,
-                        info = { info = "Cat Visit Summary" to "After each visit: which cat, its weight and how long it stayed (sent once the robot cycles, so the length is known)." }) { v -> topics { it.copy(visits = v) } }
+                        info = { info = "Cat Visit Summary" to "After each visit, once the cat has left: which cat, its weight and how long it stayed. The robot doesn't log when a cat leaves, so $APP_NAME works it out from the clean cycle that follows its wait timer." }) { v -> topics { it.copy(visits = v) } }
                     Toggle("Maintenance Tips", t.maintenance, enabled = t.usage) { v -> topics { it.copy(maintenance = v) } }
                     Toggle("Cat Detected In Drawer", false, enabled = false, na = true)
                     Toggle("Hopper Enabled", false, enabled = false, na = true)

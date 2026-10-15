@@ -47,7 +47,7 @@ class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         val st = Repo.state.value
         if (st.error != null) return Result.retry()
         val alerts = allAlerts(st, s).toMutableList()
-        if (t.updates) for (r in st.robots) {
+        if (t.updates && Repo.firmwareCheckDue()) for (r in st.robots) {
             val latest = Repo.latestFirmware(r) ?: continue
             if ("Update available" in latest) alerts += robotAlerts(System.currentTimeMillis(), r.snapshot(st, latest.lines().first()), t.copy(usage = false, errors = false))
         }

@@ -24,8 +24,8 @@ private data class DemoCat(val id: String, val name: String, val lbs: Double, va
 fun demoState(now: Long = nowMs(), zone: ZoneId = ZoneId.systemDefault()): AppState {
     val rnd = Random(7)
     val cats = listOf(
-        DemoCat("demo-mochi", "Mochi", 11.4, 2..4, 3.5..6.5),
-        DemoCat("demo-luna", "Luna", 8.6, 2..3, 2.5..4.5),
+        DemoCat("demo-mochi", "Mochi", 11.4, 2..4, 1.5..4.0),
+        DemoCat("demo-luna", "Luna", 8.6, 2..3, 1.0..3.0),
     )
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val start = today.minusDays(425)
@@ -42,9 +42,11 @@ fun demoState(now: Long = nowMs(), zone: ZoneId = ZoneId.systemDefault()): AppSt
             repeat(count) {
                 val hour = listOf(6, 7, 8, 12, 15, 18, 20, 21, 22, 23).random(rnd)
                 var t0 = day.atTime(hour, rnd.nextInt(60), rnd.nextInt(60)).atZone(zone).toInstant().toEpochMilli()
-                while (busy.any { t0 in it }) t0 += 20 * 60_000L
-                if (t0 > now - 30 * 60_000L) return@repeat
                 val minutes = rnd.nextDouble(c.minutes.start, c.minutes.endInclusive)
+                val span = (minutes * 60_000).toLong() + 7 * 60_000L
+                // The whole visit-to-cycle span must miss the other cat's, not just its start.
+                while (busy.any { t0 - 60_000L <= it.last && t0 + span + 5 * 60_000L >= it.first }) t0 += 20 * 60_000L
+                if (t0 > now - 30 * 60_000L) return@repeat
                 val leave = t0 + (minutes * 60_000).toLong()
                 val dump = leave + 7 * 60_000L
                 busy += t0 - 60_000L..dump + 5 * 60_000L

@@ -213,6 +213,12 @@ class HistoryTest {
         assertEquals(first, visitDurations(listOf(Reading(at(10, 57, 14), 8.02)), acts, 7).values.single(), 0.0)
     }
 
+    @Test fun demoVisitLengthsMatchTheGenerator() {
+        // The demo cats stay 1-4 min; overlapping demo visits used to come out under a minute.
+        val m = weighingMinutes(demoState().acts.values.first(), 7).values
+        assertTrue(m.isNotEmpty() && m.all { it in 1.0..4.3 }, "${m.min()}..${m.max()}")
+    }
+
     @Test fun minutesAndSeconds() {
         assertEquals("48s", minSec(0.8))
         assertEquals("1m 0s", minSec(1.0))

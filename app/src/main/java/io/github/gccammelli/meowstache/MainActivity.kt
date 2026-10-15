@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity(), PlatformUi {
 
     override fun onResume() {
         super.onResume()
-        if (Repo.signedIn) Repo.refreshAsync()
+        if (Repo.signedIn) Repo.refreshIfStale()
     }
 
     // ---------- PlatformUi ----------
