@@ -330,6 +330,17 @@ object Repo {
     /** For work started from a dialog that closes right away (a dialog's own scope would cancel it). */
     fun launch(block: suspend () -> Unit) = scope.launch { block() }
 
+    /** For app foregrounds: skip when the last refresh is under a minute old, so app switching doesn't hammer Whisker. */
+    fun refreshIfStale() { if (nowMs() - state.value.updatedAt > 60_000L) refreshAsync() }
+
+    /** True at most every 6 hours: firmware ships rarely, so background checks needn't ask every 30 minutes. */
+    fun firmwareCheckDue(): Boolean {
+        val last = prefs.getString("firmwareCheckedAt")?.toLongOrNull() ?: 0L
+        if (nowMs() - last < 6 * 3_600_000L) return false
+        prefs.putString("firmwareCheckedAt", nowMs().toString())
+        return true
+    }
+
     suspend fun refresh(full: Boolean = true) = refreshLock.withLock {
         if (demo && !localMode) return@withLock
         state.update { it.copy(loading = true, error = null) }
