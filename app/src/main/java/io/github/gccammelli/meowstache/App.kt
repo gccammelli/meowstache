@@ -29,7 +29,7 @@ class App : Application() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Pet alerts", NotificationManager.IMPORTANCE_DEFAULT)
         )
-        if (Repo.api.isLoggedIn) AlertWorker.schedule(this)
+        if (Repo.canCheckAlerts) AlertWorker.schedule(this)
     }
 }
 
@@ -37,7 +37,7 @@ class App : Application() {
 class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         Repo.init(androidStorage(applicationContext))
-        if (!Repo.api.isLoggedIn) return Result.success()
+        if (!Repo.canCheckAlerts) return Result.success()
         val s = Repo.alerts.value
         val t = s.robot
         if (!s.noVisitEnabled && !s.tooManyEnabled && s.targets.isEmpty() && !s.patternsEnabled && !s.recapEnabled && !t.usage && !t.errors && !t.updates)

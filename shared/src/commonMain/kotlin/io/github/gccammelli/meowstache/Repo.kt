@@ -133,6 +133,8 @@ object Repo {
     /** "Try the demo": made-up robot and cats, no account, nothing sent anywhere (see Demo.kt). */
     val demo get() = prefs.getBoolean("demo", false)
     val signedIn get() = if (localMode) demo || secrets.get("haToken") != null else api.isLoggedIn || demo
+    /** Background alert checks run for a real account: Whisker in cloud mode, Home Assistant in local mode; never the demo. */
+    val canCheckAlerts get() = !demo && (if (localMode) secrets.get("haToken") != null else api.isLoggedIn)
     val introAccepted get() = prefs.getBoolean("intro", false)
     fun acceptIntro() = prefs.putBoolean("intro", true)
     fun email(): String = when {
