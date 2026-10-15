@@ -631,12 +631,13 @@ fun ScaleDetailsScreen(nav: NavHostController, id: String) {
                 Legend("Weights" to W.Accent)
             }
             Spacer(Modifier.height(14.dp))
+            val durations = s.durations(id)
             HistoryList("Recent Weight History", r.asReversed(), shown, { shown += 20 }) { it ->
                 EventRow(leading = { Avatar(p.image, 40.dp) }, title = {
                     Text(buildAnnotatedString {
                         append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(it.lbs)) }
                     }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }, lines = listOf(p.name, fmtAt(it.ts)))
+                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ %.1f min".format(m) }, fmtAt(it.ts)))
             }
         }
     }
