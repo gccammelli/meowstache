@@ -38,8 +38,13 @@ data class AppState(
 
     /** Estimated minutes per visit, keyed by reading timestamp. */
     fun durations(petId: String): Map<Long, Double> = durationCache.getOrPut(petId) {
-        // Each robot's own spans (a pet can use several robots).
-        robots.fold(emptyMap()) { acc, r -> acc + visitDurations(history[petId].orEmpty(), acts[r.serial].orEmpty(), r.waitMinutes) }
+        // Each visit is timed on the robot that weighed it (a cat can use several robots).
+        val first = robots.firstOrNull() ?: return@getOrPut emptyMap()
+        val weighedOn = acts.flatMap { (serial, a) -> a.filter { it.value == "catWeight" }.map { it.ts to serial } }.toMap()
+        history[petId].orEmpty().groupBy { weighedOn[it.ts] ?: first.serial }.flatMap { (serial, visits) ->
+            val robot = robots.firstOrNull { it.serial == serial } ?: first
+            visitDurations(visits, acts[serial].orEmpty(), robot.waitMinutes).entries
+        }.associate { it.key to it.value }
     }
     private val durationCache = HashMap<String, Map<Long, Double>>()
 }
