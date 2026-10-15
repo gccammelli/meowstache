@@ -29,11 +29,18 @@ fun clipTime(name: String): Long? = CLIP_NAME.find(name)?.destructured?.let { (y
 fun clipFor(weighTs: Long, clips: List<Clip>): Clip? =
     clips.filter { it.ts - weighTs in -5 * 60_000L..10 * 60_000L }.minByOrNull { kotlin.math.abs(it.ts - weighTs) }
 
-/** The clips in a folder of Home Assistant's local media ("meowstache" = /media/meowstache). */
+/**
+ * The clips in a folder of Home Assistant's local media ("meowstache" = /media/meowstache).
+ * The folder only appears with the first saved clip, so a missing one just means no clips yet.
+ */
 suspend fun HaBackend.clips(folder: String): List<Clip> {
-    val r = ws(listOf(buildJsonObject {
-        put("type", "media_source/browse_media"); put("media_content_id", "media-source://media_source/local/${folder.trim('/')}")
-    })).first() as? JsonObject ?: return emptyList()
+    val r = try {
+        ws(listOf(buildJsonObject {
+            put("type", "media_source/browse_media"); put("media_content_id", "media-source://media_source/local/${folder.trim('/')}")
+        })).first() as? JsonObject ?: return emptyList()
+    } catch (e: ApiException) {
+        if ("does not exist" in e.message.orEmpty()) return emptyList() else throw e
+    }
     return r.a("children").mapNotNull { c ->
         val id = c.s("media_content_id") ?: return@mapNotNull null
         Clip(clipTime(c.s("title") ?: id) ?: return@mapNotNull null, id)

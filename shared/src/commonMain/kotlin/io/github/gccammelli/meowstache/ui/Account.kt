@@ -583,7 +583,7 @@ private fun VideosDialog(onDismiss: () -> Unit) {
                 busy = true; error = null
                 scope.launch {
                     runCatching { Repo.setVideos(folder, url, token) }
-                        .onSuccess { ctx.toast("Connected · $it video${if (it == 1) "" else "s"} found"); onDismiss() }
+                        .onSuccess { ctx.toast(if (it == 0) "Connected · no videos yet: they'll appear after the next visit" else "Connected · $it video${if (it == 1) "" else "s"} found"); onDismiss() }
                         .onFailure { error = it.message ?: "Couldn't connect" }
                     busy = false
                 }

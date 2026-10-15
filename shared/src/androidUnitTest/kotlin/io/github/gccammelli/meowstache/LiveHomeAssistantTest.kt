@@ -94,6 +94,7 @@ class LiveHomeAssistantTest {
     fun listsAndResolvesVisitVideos() = runTest(timeout = 2.minutes) {
         val url = System.getenv("MEOWSTACHE_HA_URL") ?: return@runTest
         val ha = HaHttp(url, System.getenv("MEOWSTACHE_HA_TOKEN")!!)
+        assertTrue(ha.clips("not-created-yet").isEmpty()) // the folder appears with the first clip
         val clips = ha.clips("meowstache")
         println("clips $clips")
         assertTrue(clips.isNotEmpty() && clips.all { it.id.endsWith(".mp4") })
