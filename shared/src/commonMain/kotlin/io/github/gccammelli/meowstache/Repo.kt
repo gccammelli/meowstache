@@ -173,8 +173,9 @@ object Repo {
     }
 
     private suspend fun loadClips() {
-        val folder = clipsFolder ?: return run { clips.value = emptyList() }
-        val b = clipsHa() ?: return
+        val b = clipsHa()
+        val folder = clipsFolder
+        if (b == null || folder == null) { clips.value = emptyList(); return }
         runCatching { b.clips(folder) }.onSuccess { clips.value = it } // offline or away from home: keep the last list
     }
 
@@ -347,6 +348,7 @@ object Repo {
         prefs.putBoolean("demo", false)
         prefs.putString("haUrl", null)
         ha = null
+        videosOff()
         api.logout()
         state.value = AppState(overrides = local.value.overrides)
     }
