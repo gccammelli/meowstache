@@ -173,4 +173,21 @@ class HistoryTest {
         assertEquals("12/10 at 23:05", DateTimeFormatter.ofPattern("dd/MM 'at' HH:mm").format(LocalDate(2026, 10, 12), kotlinx.datetime.LocalTime(23, 5)))
         assertEquals("Oct 2026 · Mon", DateTimeFormatter.ofPattern("MMM yyyy · EEE").format(LocalDate(2026, 10, 12), null))
     }
+
+    @Test
+    fun visitSummaries() {
+        val now = 1_800_000_000_000L
+        val min = 60_000L
+        val snap = RobotSnapshot("S1", "Robbie", true, now, "OPTIMAL", null, emptyList(), visits = listOf(
+            VisitNote(now - 10 * min, "Mochi", "5.0 kg", 5.3),   // length known: announce
+            VisitNote(now - 5 * min, "Luna", "3.7 kg", null),     // still waiting for the cycle
+            VisitNote(now - 40 * min, null, "4.1 kg", null),      // no length after 30 min: announce anyway
+            VisitNote(now - 7 * 60 * min, "Mochi", "5.0 kg", 4.0), // older than 6 h: ignored
+        ))
+        val on = robotAlerts(now, snap, RobotTopics(usage = true, visits = true), ZoneId.of("UTC"))
+        assertEquals(listOf("Mochi visited Robbie", "A cat visited Robbie"), on.map { it.title })
+        assertEquals("5.0 kg · 5.3 min · at 07:50", on[0].body) // now - 10 min = 2027-01-15 07:50 UTC
+        assertEquals("robot:visit:S1:${now - 10 * min}", on[0].key) // stable key: the worker sends it once
+        assertEquals(emptyList(), robotAlerts(now, snap, RobotTopics(usage = true, visits = false), ZoneId.of("UTC")).filter { "visited" in it.title })
+    }
 }

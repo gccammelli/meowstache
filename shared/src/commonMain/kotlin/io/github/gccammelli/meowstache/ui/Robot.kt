@@ -205,6 +205,10 @@ private fun HistoryTab(r: Robot) {
     val s = state(); val ctx = LocalPlatform.current
     val acts = s.acts[r.serial].orEmpty()
     val visible = remember(acts) { acts.filter { actLabel(it) != null } }
+    // Each weighing's visit length (same estimate as the daily recap), keyed by its time (GitHub #2).
+    val visitMin = remember(acts, r.waitMinutes) {
+        visitDurations(acts.filter { it.value == "catWeight" }.map { Reading(it.ts, it.actionValue?.toDoubleOrNull() ?: 0.0) }, acts, r.waitMinutes)
+    }
     val cycles = remember(acts) { acts.filter { it.value == "robotCycleStatusIdle" }.map { it.ts } }
     var shown by remember { mutableIntStateOf(5) }
     var menuFor by remember { mutableStateOf<Act?>(null) }
@@ -232,7 +236,7 @@ private fun HistoryTab(r: Robot) {
         }
         Text("Device Activity", color = W.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
         WCard(Modifier.fillMaxWidth()) {
-            visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
+            visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null, visitMin[a.ts]) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
             if (visible.isEmpty()) Text(if (s.historyLoading) "Loading full history…" else "No activity yet", color = W.Muted)
             if (visible.size > shown) Text("See More", color = W.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clickable { shown += 25 }.padding(12.dp))
@@ -241,8 +245,8 @@ private fun HistoryTab(r: Robot) {
         }
         Spacer(Modifier.height(16.dp))
         Pill("Download Activity", {
-            ctx.shareFile("text/csv", "${r.name}-activity.csv", "timestamp,event,label,value,pet\n" + acts.joinToString("\n") { a ->
-                "${Instant.ofEpochMilli(a.ts)},${a.value},${actLabel(a) ?: ""},${a.actionValue ?: ""},${if (a.value == "catWeight") Repo.petForWeightAct(a)?.name ?: "" else ""}"
+            ctx.shareFile("text/csv", "${r.name}-activity.csv", "timestamp,event,label,value,pet,visit_min\n" + acts.joinToString("\n") { a ->
+                "${Instant.ofEpochMilli(a.ts)},${a.value},${actLabel(a) ?: ""},${a.actionValue ?: ""},${if (a.value == "catWeight") Repo.petForWeightAct(a)?.name ?: "" else ""},${visitMin[a.ts]?.let { "%.1f".format(it) } ?: ""}"
             })
         }, Modifier.fillMaxWidth(), icon = { Icon(Icons.Filled.FileDownload, null, tint = Color(0xFF222222)) })
     }
@@ -286,7 +290,7 @@ private fun CycleStat(value: String, label: String, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, onMenu: () -> Unit) {
+private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visitMinutes: Double?, onMenu: () -> Unit) {
     val label = actLabel(a) ?: return
     if (a.value == "catWeight") {
         val lbs = a.actionValue?.toDoubleOrNull()
@@ -297,7 +301,7 @@ private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, onMen
                     append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(lbs).replace(" ", "")) }
                 }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             },
-            lines = listOf(pet?.name ?: "Unassigned", fmtAt(a.ts)),
+            lines = listOfNotNull(pet?.name ?: "Unassigned", visitMinutes?.let { "Visit: %.1f min".format(it) }, fmtAt(a.ts)),
             trailing = { Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable(onClick = onMenu).padding(8.dp)) },
         )
     } else {
