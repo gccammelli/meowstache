@@ -244,6 +244,7 @@ private fun HistoryTab(r: Robot) {
                 modifier = Modifier.fillMaxWidth().clickable { shown = 5 }.padding(8.dp))
         }
         Spacer(Modifier.height(16.dp))
+        // CSV for spreadsheets: only ever add columns at the end, so existing sheets and formulas keep working.
         Pill("Download Activity", {
             ctx.shareFile("text/csv", "${r.name}-activity.csv", "timestamp,event,label,value,pet,visit_min\n" + acts.joinToString("\n") { a ->
                 "${Instant.ofEpochMilli(a.ts)},${a.value},${actLabel(a) ?: ""},${a.actionValue ?: ""},${if (a.value == "catWeight") Repo.petForWeightAct(a)?.name ?: "" else ""},${visitMin[a.ts]?.let { "%.1f".format(it) } ?: ""}"
