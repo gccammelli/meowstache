@@ -12,6 +12,7 @@ import io.github.gccammelli.meowstache.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -740,7 +741,7 @@ fun ScaleDetailsScreen(nav: NavHostController, id: String) {
                     Text(buildAnnotatedString {
                         append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(it.lbs)) }
                     }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)))
+                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)), trailing = { ClipButton(it.ts) })
             }
         }
     }
@@ -768,7 +769,7 @@ fun VisitDetailsScreen(nav: NavHostController, id: String) {
             HistoryList("Recent Visit History", r.asReversed(), shown, { shown += 20 }) {
                 EventRow(onClick = { nav.navigate("visit/$id/${it.ts}") },leading = { CircleIcon(Icons.Filled.Scale, W.Green, Color(0xFF1E1E1E), 34.dp) },
                     title = { Text("Pet Visit Recorded", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }))
+                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }), trailing = { ClipButton(it.ts) })
             }
         }
     }
@@ -795,6 +796,19 @@ fun <T> HistoryList(title: String, items: List<T>, shown: Int, more: () -> Unit,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().clickable(onClick = more).padding(12.dp))
         if (items.isEmpty()) Text("No history yet", color = W.Muted, modifier = Modifier.padding(8.dp))
     }
+
+/**
+ * ▶ for the video of the visit weighed at [ts] (GitHub #3), when Home Assistant has a clip near it. Clips go by time,
+ * not by cat, so a reassigned weighing keeps its video.
+ */
+@Composable
+fun ClipButton(ts: Long) {
+    val clips by Repo.clips.collectAsState()
+    val clip = clipFor(ts, clips) ?: return
+    val ctx = LocalPlatform.current
+    Icon(Icons.Filled.PlayCircle, "Play the visit's video", tint = W.Accent,
+        modifier = Modifier.clickable { ctx.playVideo { Repo.clipUrl(clip) } }.padding(8.dp))
+}
 
 @Composable
 fun EventRow(leading: @Composable () -> Unit, title: @Composable () -> Unit, lines: List<String>, trailing: (@Composable () -> Unit)? = null, onClick: (() -> Unit)? = null) =
