@@ -55,12 +55,21 @@ class MainActivity : ComponentActivity(), PlatformUi {
     override fun openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
     /**
-     * In-app, with the platform's VideoView (the phone's default video app may want storage access just to stream:
-     * MX Player does). It opens at once with a spinner while Home Assistant signs the link and the video buffers.
+     * In-app, with Media3's player: it starts after a short buffer (Android's own VideoView buffered for ages before
+     * starting), and the phone's default video app may want storage access just to stream (MX Player does). It opens at
+     * once with "Loading video…" while Home Assistant signs the link and the first seconds arrive.
      */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun playVideo(load: suspend () -> String) {
-        val video = android.widget.VideoView(this)
-        val spinner = android.widget.LinearLayout(this).apply {
+        val player = androidx.media3.exoplayer.ExoPlayer.Builder(this)
+            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(2_000, 30_000, 500, 1_000).build())
+            .build()
+        val view = androidx.media3.ui.PlayerView(this).apply {
+            this.player = player
+            setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+        val loading = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER
             addView(android.widget.ProgressBar(context))
@@ -70,21 +79,39 @@ class MainActivity : ComponentActivity(), PlatformUi {
         }
         val box = android.widget.FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
-            addView(video, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER))
-            addView(spinner, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
+            addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(loading, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
         }
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setContentView(box)
-        video.setMediaController(android.widget.MediaController(this).also { it.setAnchorView(video) })
-        video.setOnPreparedListener { spinner.visibility = android.view.View.GONE; video.start() }
-        video.setOnErrorListener { _, _, _ -> toast("Couldn't play the video"); dialog.dismiss(); true }
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) loading.visibility = android.view.View.GONE
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                toast("Couldn't play the video"); dialog.dismiss()
+            }
+        })
         val job = lifecycleScope.launch {
             runCatching { load() }
-                .onSuccess { video.setVideoURI(Uri.parse(it)) }
+                .onSuccess { url ->
+                    val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { withoutMdns(url) }
+                    player.setMediaItem(androidx.media3.common.MediaItem.fromUri(direct))
+                    player.playWhenReady = true
+                    player.prepare()
+                }
                 .onFailure { if (it !is kotlinx.coroutines.CancellationException) { toast("Couldn't open the video: ${it.message}"); dialog.dismiss() } }
         }
-        dialog.setOnDismissListener { job.cancel(); video.stopPlayback() }
+        dialog.setOnDismissListener { job.cancel(); player.release() }
         dialog.show()
+    }
+
+    /** "homeassistant.local" costs ~1 s to look up, again for each connection the player opens: look it up once. */
+    private fun withoutMdns(url: String): String {
+        val host = Uri.parse(url).host ?: return url
+        if (!host.endsWith(".local")) return url
+        val ip = runCatching { java.net.InetAddress.getByName(host).hostAddress }.getOrNull() ?: return url
+        return url.replaceFirst("//$host", "//" + if (':' in ip) "[$ip]" else ip)
     }
 
     override val canInstantNotifications get() = true
