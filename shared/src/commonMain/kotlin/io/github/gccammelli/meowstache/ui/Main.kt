@@ -570,21 +570,6 @@ private fun DevicesTab(nav: NavHostController) {
 
 // ---------- Pets ----------
 
-/** Western zodiac sign for a birthday, as a text-style glyph. */
-fun zodiac(d: LocalDate?): String? {
-    d ?: return null
-    val md = d.monthValue * 100 + d.dayOfMonth
-    val signs = listOf(120 to "♑", 219 to "♒", 320 to "♓", 420 to "♈", 521 to "♉", 621 to "♊", 722 to "♋", 823 to "♌", 923 to "♍", 1023 to "♎", 1122 to "♏", 1222 to "♐", 1231 to "♑")
-    return signs.first { md < it.first || it.first == 1231 }.second + "︎"
-}
-
-@Composable
-fun ZodiacBadge(p: Pet, size: Dp = 34.dp) = zodiac(p.birthday)?.let {
-    Box(Modifier.padding(start = 10.dp).size(size).background(W.Teal, CircleShape), contentAlignment = Alignment.Center) {
-        Text(it, color = Color(0xFF1E1E1E), fontSize = (size.value * 0.6f).sp)
-    }
-}
-
 fun petSummary(p: Pet) = listOfNotNull(p.breed, listOfNotNull(p.environment, p.genderLabel.ifBlank { null }).joinToString(" ").ifBlank { null },
     Repo.ageLabel(p).ifBlank { null }).joinToString(" • ")
 
@@ -600,7 +585,6 @@ private fun PetsTab(nav: NavHostController) {
                 Column(Modifier.padding(22.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(p.name, color = W.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        ZodiacBadge(p)
                         Spacer(Modifier.weight(1f))
                         Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable { menuNa = true })
                     }
@@ -633,7 +617,7 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
             NetImage(p.image, Modifier.fillMaxWidth().aspectRatio(1.67f))
             Column(Modifier.fillMaxWidth().background(W.pick(0xFF3A3A3A, 0xFFFFFFFF)).padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(p.name, color = W.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold); ZodiacBadge(p, 40.dp)
+                    Text(p.name, color = W.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 }
                 Text(petSummary(p), color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 10.dp))
                 r.lastOrNull()?.let { Text("Last Visit: ${fmt(it.ts, "dd/MM/yyyy HH:mm")}", color = W.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp)) }
