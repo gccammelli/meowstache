@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The status-bar "m": the launcher's "m" cropped to fill the 24 dp icon (with Material's 2 dp margin), so it's as
+     big as other apps' icons. The launcher foreground keeps it inside the adaptive-icon safe zone, which is tiny here. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="52"
+    android:viewportHeight="52">
+    <group
+        android:translateX="-28"
+        android:translateY="-32">
+        <group
+            android:pivotX="54"
+            android:pivotY="54"
+            android:rotation="180"
+            android:translateY="4">
+            <path
+                android:pathData="M36,42 C36,70 54,70 54,52 C54,70 72,70 72,42"
+                android:strokeColor="#FFFFFFFF"
+                android:strokeWidth="7"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
+        </group>
+    </group>
+</vector>

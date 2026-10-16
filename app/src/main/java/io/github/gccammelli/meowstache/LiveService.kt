@@ -43,7 +43,7 @@ class LiveService : Service() {
             NotificationChannel(LIVE_CHANNEL, "Instant notifications connection", NotificationManager.IMPORTANCE_MIN))
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val note: Notification = NotificationCompat.Builder(this, LIVE_CHANNEL)
-            .setSmallIcon(R.drawable.ic_launcher_fg)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Listening for your robot")
             .setContentText("Swipe away to hide; instant notifications keep working")
             // Android requires this notification; swiping it away (Android 13+) keeps the service running.
