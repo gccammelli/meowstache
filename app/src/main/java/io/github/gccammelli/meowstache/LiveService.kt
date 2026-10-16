@@ -62,7 +62,10 @@ class LiveService : Service() {
 
     private suspend fun listen() =
         liveLoop(Repo.api, onAlive = {
-            if (aliveAt == 0L) android.util.Log.i("Meowstache", "live connection up")
+            if (aliveAt == 0L) { // first connection since the service started: catch up on anything missed meanwhile
+                android.util.Log.i("Meowstache", "live connection up")
+                requestCheck()
+            }
             aliveAt = System.currentTimeMillis()
         }, onChange = {
             android.util.Log.i("Meowstache", "robot changed: alert check soon")
@@ -90,8 +93,10 @@ class LiveService : Service() {
         /** Starts or stops the service to match the setting (call from the foreground: Android limits background starts). */
         fun sync(ctx: Context) {
             val intent = Intent(ctx, LiveService::class.java)
-            if (enabled && Repo.api.isLoggedIn && !Repo.demo && !Repo.localMode) // Whisker only; local mode: GitHub #4 follow-up runCatching { ctx.startForegroundService(intent) }
-            else ctx.stopService(intent)
+            // Whisker only for now; local mode (Home Assistant's live events) is the #4 follow-up.
+            if (enabled && Repo.api.isLoggedIn && !Repo.demo && !Repo.localMode) {
+                runCatching { ctx.startForegroundService(intent) }.onFailure { android.util.Log.w("Meowstache", "live service didn't start", it) }
+            } else ctx.stopService(intent)
         }
     }
 }
