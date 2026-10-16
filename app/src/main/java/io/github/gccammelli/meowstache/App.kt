@@ -78,7 +78,7 @@ class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                 if (!canPost) continue
                 NotificationManagerCompat.from(ctx).notify(a.key.hashCode(),
                     NotificationCompat.Builder(ctx, CHANNEL)
-                        .setSmallIcon(R.drawable.ic_launcher_fg)
+                        .setSmallIcon(R.drawable.ic_notification)
                         .setContentTitle(a.title)
                         .setContentText(a.body)
                         .setStyle(NotificationCompat.BigTextStyle().bigText(a.body))
