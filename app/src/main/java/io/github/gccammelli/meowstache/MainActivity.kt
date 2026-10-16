@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity(), PlatformUi {
      * once with "Loading video…" while Home Assistant signs the link and the first seconds arrive.
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    override fun playVideo(load: suspend () -> String) {
+    override fun playVideo(load: suspend () -> List<String>) {
         val player = androidx.media3.exoplayer.ExoPlayer.Builder(this)
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(2_000, 30_000, 500, 1_000).build())
             .build()
@@ -107,9 +107,9 @@ class MainActivity : ComponentActivity(), PlatformUi {
         })
         val job = lifecycleScope.launch {
             runCatching { load() }
-                .onSuccess { url ->
-                    val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { withoutMdns(url) }
-                    player.setMediaItem(androidx.media3.common.MediaItem.fromUri(direct))
+                .onSuccess { urls ->
+                    val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { urls.map(::withoutMdns) }
+                    player.setMediaItems(direct.map { androidx.media3.common.MediaItem.fromUri(it) })
                     player.playWhenReady = true
                     player.prepare()
                 }

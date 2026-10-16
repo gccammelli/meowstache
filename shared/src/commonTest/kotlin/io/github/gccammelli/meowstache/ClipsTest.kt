@@ -16,8 +16,17 @@ class ClipsTest {
         val w = 1_792_084_173_000L
         val stream = Clip(w - 80_000, "a") // recorded from the cat detection, before the weighing
         val ring = Clip(w + 4 * 60_000, "b") // Ring's recording, saved a few minutes later
-        assertEquals(stream, clipFor(w, listOf(ring, stream)))
-        assertEquals(ring, clipFor(w, listOf(ring)))
-        assertNull(clipFor(w, listOf(Clip(w - 6 * 60_000, "old"), Clip(w + 11 * 60_000, "next"))))
+        assertEquals(listOf(stream), clipsFor(w, listOf(ring, stream)))
+        assertEquals(listOf(ring), clipsFor(w, listOf(ring)))
+        assertEquals(emptyList(), clipsFor(w, listOf(Clip(w - 6 * 60_000, "old"), Clip(w + 11 * 60_000, "next"))))
+    }
+
+    @Test fun aVisitSplitByRingPlaysAllItsParts() {
+        val w = 1_792_084_173_000L
+        val part1 = Clip(w + 60_000, "1") // the entrance, saved first
+        val part2 = Clip(w + 125_000, "2") // the rest, saved about a minute later
+        val nextCat = Clip(w + 8 * 60_000, "3") // a separate visit within the window
+        assertEquals(listOf(part1, part2), clipsFor(w, listOf(nextCat, part2, part1)))
+        assertEquals(listOf(part1, part2), clipsFor(w + 3 * 60_000, listOf(part1, part2)))
     }
 }

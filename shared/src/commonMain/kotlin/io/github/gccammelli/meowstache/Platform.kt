@@ -42,13 +42,13 @@ interface PlatformUi {
     val buildNumber: Int
     fun openUrl(url: String)
     /**
-     * Plays a video whose link [load] fetches (visit videos: Home Assistant signs it first). Platforms should show
-     * something at once, since fetching and buffering take a moment; by default the system opens the link (Safari
-     * plays MP4 itself).
+     * Plays a visit's video, one or more parts back to back, whose links [load] fetches (Home Assistant signs them
+     * first). Platforms should show something at once, since fetching and buffering take a moment; by default the
+     * system opens the first part's link (Safari plays MP4 itself).
      */
-    fun playVideo(load: suspend () -> String) {
+    fun playVideo(load: suspend () -> List<String>) {
         kotlinx.coroutines.MainScope().launch {
-            runCatching { load() }.onSuccess(::openUrl).onFailure { toast("Couldn't open the video: ${it.message}") }
+            runCatching { load().first() }.onSuccess(::openUrl).onFailure { toast("Couldn't open the video: ${it.message}") }
         }
     }
     /** Instant notifications need a background connection; only Android allows one (see LiveService). */

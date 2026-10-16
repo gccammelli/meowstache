@@ -22,6 +22,11 @@ import androidx.compose.ui.window.ComposeUIViewController
 import io.github.gccammelli.meowstache.ui.AppTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.AVQueuePlayer
+import platform.AVFoundation.play
+import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSBundle
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -104,6 +109,17 @@ private class IosPlatformUi : PlatformUi {
     }
 
     override fun toast(message: String) { toastMessage.value = message }
+
+    /** iOS's own full-screen player, opened at once; the parts of a split visit play back to back (Safari only plays one). */
+    override fun playVideo(load: suspend () -> List<String>) {
+        val vc = AVPlayerViewController()
+        top()?.presentViewController(vc, true, null) ?: return
+        kotlinx.coroutines.MainScope().launch {
+            runCatching { load().map { AVPlayerItem(uRL = NSURL.URLWithString(it)!!) } }
+                .onSuccess { items -> vc.player = AVQueuePlayer(items = items).apply { play() } }
+                .onFailure { vc.dismissViewControllerAnimated(true, null); toast("Couldn't open the video: ${it.message}") }
+        }
+    }
 
     private fun tempFile(name: String, text: String): NSURL {
         val path = NSTemporaryDirectory() + name

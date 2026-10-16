@@ -23,11 +23,18 @@ fun clipTime(name: String): Long? = CLIP_NAME.find(name)?.destructured?.let { (y
 }
 
 /**
- * The clip of the visit weighed at [weighTs]: the nearest from 5 minutes before (stream cameras start
- * recording at the cat detection) to 10 minutes after (Ring hands its recording over a few minutes late).
+ * The clips of the visit weighed at [weighTs], oldest first: the nearest from 5 minutes before (stream cameras start
+ * recording at the cat detection) to 10 minutes after (Ring hands its recording over a few minutes late), plus its
+ * neighbours less than 2 minutes apart: Ring splits a long visit into recordings saved about a minute apart.
  */
-fun clipFor(weighTs: Long, clips: List<Clip>): Clip? =
-    clips.filter { it.ts - weighTs in -5 * 60_000L..10 * 60_000L }.minByOrNull { kotlin.math.abs(it.ts - weighTs) }
+fun clipsFor(weighTs: Long, clips: List<Clip>): List<Clip> {
+    val near = clips.filter { it.ts - weighTs in -5 * 60_000L..10 * 60_000L }.sortedBy { it.ts }
+    var first = near.indices.minByOrNull { kotlin.math.abs(near[it].ts - weighTs) } ?: return emptyList()
+    var last = first
+    while (first > 0 && near[first].ts - near[first - 1].ts < 2 * 60_000L) first--
+    while (last < near.lastIndex && near[last + 1].ts - near[last].ts < 2 * 60_000L) last++
+    return near.subList(first, last + 1)
+}
 
 /**
  * The clips in a folder of Home Assistant's local media ("meowstache" = /media/meowstache).

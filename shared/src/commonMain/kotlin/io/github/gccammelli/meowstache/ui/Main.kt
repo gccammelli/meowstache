@@ -788,10 +788,10 @@ fun <T> HistoryList(title: String, items: List<T>, shown: Int, more: () -> Unit,
 @Composable
 fun ClipButton(ts: Long) {
     val clips by Repo.clips.collectAsState()
-    val clip = clipFor(ts, clips) ?: return
+    val parts = clipsFor(ts, clips).ifEmpty { return }
     val ctx = LocalPlatform.current
     Icon(Icons.Filled.PlayCircle, "Play the visit's video", tint = W.Accent,
-        modifier = Modifier.clickable { ctx.playVideo { Repo.clipUrl(clip) } }.padding(8.dp))
+        modifier = Modifier.clickable { ctx.playVideo { parts.map { Repo.clipUrl(it) } } }.padding(8.dp))
 }
 
 @Composable
