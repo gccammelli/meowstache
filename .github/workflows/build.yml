@@ -121,6 +121,8 @@ jobs:
           xcodebuild -project iosApp/iosApp.xcodeproj -target iosApp -configuration Release -sdk iphoneos \
             SYMROOT="$PWD/build/ios" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           mkdir -p Payload && cp -R build/ios/Release-iphoneos/Meowstache.app Payload/
+          # Ad-hoc signature: some sideloading tools can't re-sign a binary that has none ("integrity could not be verified").
+          codesign --force --sign - --timestamp=none Payload/Meowstache.app
           zip -qry meowstache.ipa Payload
 
       - name: Simulator screenshots (intro, then demo mode)
