@@ -82,9 +82,22 @@ class MainActivity : ComponentActivity(), PlatformUi {
             addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(loading, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
         }
-        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        // A pop-up over the app, video-shaped (16:9 until the video says otherwise); the player's full-screen button
+        // expands it, tapping outside or Back closes it.
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dialog.setContentView(box)
+        dialog.setCanceledOnTouchOutside(true)
+        val popupWidth = (resources.displayMetrics.widthPixels * 0.92).toInt()
+        var aspect = 16f / 9
+        var isFull = false
+        fun popup() = dialog.window?.setLayout(popupWidth, (popupWidth / aspect).toInt())
+        fun fullScreen() = dialog.window?.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+        view.setFullscreenButtonClickListener { full -> isFull = full; if (full) fullScreen() else popup() }
         player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width > 0 && size.height > 0) { aspect = size.width * size.pixelWidthHeightRatio / size.height; if (!isFull) popup() }
+            }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_READY) loading.visibility = android.view.View.GONE
             }
@@ -104,6 +117,7 @@ class MainActivity : ComponentActivity(), PlatformUi {
         }
         dialog.setOnDismissListener { job.cancel(); player.release() }
         dialog.show()
+        popup()
     }
 
     /** "homeassistant.local" costs ~1 s to look up, again for each connection the player opens: look it up once. */
