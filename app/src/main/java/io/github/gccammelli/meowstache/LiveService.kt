@@ -45,8 +45,9 @@ class LiveService : Service() {
         val note: Notification = NotificationCompat.Builder(this, LIVE_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_fg)
             .setContentTitle("Listening for your robot")
-            .setContentText("For instant notifications. Turn off in Notifications settings.")
-            .setContentIntent(open).setOngoing(true).setPriority(NotificationCompat.PRIORITY_MIN).build()
+            .setContentText("Swipe away to hide; instant notifications keep working")
+            // Android requires this notification; swiping it away (Android 13+) keeps the service running.
+            .setContentIntent(open).setSilent(true).setPriority(NotificationCompat.PRIORITY_MIN).build()
         ServiceCompat.startForeground(this, 1, note,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
         scope.launch { listen() }

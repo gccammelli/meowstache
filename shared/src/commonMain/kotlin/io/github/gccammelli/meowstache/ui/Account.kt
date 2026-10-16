@@ -441,7 +441,7 @@ fun NotificationsScreen(nav: NavHostController) {
                 if (ctx.canInstantNotifications && !Repo.demo && !Repo.localMode) Toggle("Instant Notifications", instant,
                     info = { info = "Instant Notifications" to "Keeps a live connection to your robot, the same live updates Home Assistant uses, so " +
                         "notifications arrive within seconds instead of every 30 minutes. Gentle on Whisker's servers: one connection, and at most one " +
-                        "check every 2 minutes. Android shows a silent notification while it's on. A visit summary still waits for the clean cycle." }) { v ->
+                        "check every 2 minutes. Android requires a silent notification while it's on; swipe it away to hide it, and instant notifications keep working. A visit summary still waits for the clean cycle." }) { v ->
                     instant = v; Repo.setInstantNotifications(v); ctx.syncInstantNotifications()
                 }
                 Text(if (instant && ctx.canInstantNotifications && !Repo.localMode) "Checked by $APP_NAME on this phone as soon as your robot changes, not pushed by the manufacturer."
