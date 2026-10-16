@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -52,20 +54,36 @@ class MainActivity : ComponentActivity(), PlatformUi {
 
     override fun openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
-    /** In-app, with the platform's VideoView: the phone's default video app may want storage access just to stream (MX Player does). */
-    override fun playVideo(url: String) {
+    /**
+     * In-app, with the platform's VideoView (the phone's default video app may want storage access just to stream:
+     * MX Player does). It opens at once with a spinner while Home Assistant signs the link and the video buffers.
+     */
+    override fun playVideo(load: suspend () -> String) {
         val video = android.widget.VideoView(this)
+        val spinner = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            addView(android.widget.ProgressBar(context))
+            addView(android.widget.TextView(context).apply {
+                text = "Loading video…"; setTextColor(android.graphics.Color.WHITE); setPadding(0, 24, 0, 0)
+            })
+        }
         val box = android.widget.FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
             addView(video, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER))
+            addView(spinner, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
         }
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setContentView(box)
         video.setMediaController(android.widget.MediaController(this).also { it.setAnchorView(video) })
-        video.setOnPreparedListener { video.start() }
+        video.setOnPreparedListener { spinner.visibility = android.view.View.GONE; video.start() }
         video.setOnErrorListener { _, _, _ -> toast("Couldn't play the video"); dialog.dismiss(); true }
-        dialog.setOnDismissListener { video.stopPlayback() }
-        video.setVideoURI(Uri.parse(url))
+        val job = lifecycleScope.launch {
+            runCatching { load() }
+                .onSuccess { video.setVideoURI(Uri.parse(it)) }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) { toast("Couldn't open the video: ${it.message}"); dialog.dismiss() } }
+        }
+        dialog.setOnDismissListener { job.cancel(); video.stopPlayback() }
         dialog.show()
     }
 

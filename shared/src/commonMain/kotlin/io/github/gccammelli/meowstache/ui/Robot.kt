@@ -212,10 +212,8 @@ private fun HistoryTab(r: Robot) {
     val acts = s.acts[r.serial].orEmpty()
     val visible = remember(acts) { acts.filter { actLabel(it) != null } }
     val clips by Repo.clips.collectAsState()
-    // Opens the visit's video (GitHub #3) in the phone's player or browser, through a link Home Assistant signs.
-    fun play(c: io.github.gccammelli.meowstache.Clip) = scope.launch {
-        runCatching { Repo.clipUrl(c) }.onSuccess(ctx::playVideo).onFailure { ctx.toast("Couldn't open the video: ${it.message}") }
-    }
+    // Opens the visit's video (GitHub #3) through a link Home Assistant signs; the player shows it's loading meanwhile.
+    fun play(c: io.github.gccammelli.meowstache.Clip) = ctx.playVideo { Repo.clipUrl(c) }
     // Each weighing's visit length (same estimate as the daily recap), keyed by its time (GitHub #2).
     val visitMin = remember(acts, r.waitMinutes) {
         visitDurations(acts.filter { it.value == "catWeight" }.map { Reading(it.ts, it.actionValue?.toDoubleOrNull() ?: 0.0) }, acts, r.waitMinutes)

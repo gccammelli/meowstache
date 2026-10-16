@@ -1,5 +1,7 @@
 package io.github.gccammelli.meowstache
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.ImageBitmap
 
@@ -39,8 +41,16 @@ interface PlatformUi {
     val appVersion: String
     val buildNumber: Int
     fun openUrl(url: String)
-    /** Plays a video link (visit videos); by default the system opens it (Safari plays MP4 itself). */
-    fun playVideo(url: String) = openUrl(url)
+    /**
+     * Plays a video whose link [load] fetches (visit videos: Home Assistant signs it first). Platforms should show
+     * something at once, since fetching and buffering take a moment; by default the system opens the link (Safari
+     * plays MP4 itself).
+     */
+    fun playVideo(load: suspend () -> String) {
+        kotlinx.coroutines.MainScope().launch {
+            runCatching { load() }.onSuccess(::openUrl).onFailure { toast("Couldn't open the video: ${it.message}") }
+        }
+    }
     /** Instant notifications need a background connection; only Android allows one (see LiveService). */
     val canInstantNotifications: Boolean get() = false
     fun syncInstantNotifications() {}
