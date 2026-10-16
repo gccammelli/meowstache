@@ -558,6 +558,7 @@ private fun VideosDialog(onDismiss: () -> Unit) {
     var folder by remember { mutableStateOf(Repo.clipsFolder ?: "meowstache") }
     var url by remember { mutableStateOf("http://homeassistant.local:8123") }
     var token by remember { mutableStateOf("") }
+    var away by remember { mutableStateOf(Repo.clipsAwayUrl.orEmpty()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val cloud = !Repo.localMode
@@ -583,6 +584,10 @@ private fun VideosDialog(onDismiss: () -> Unit) {
                 }
                 androidx.compose.material3.OutlinedTextField(folder, { folder = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
                     label = { Text("Media folder") }, singleLine = true, colors = colors)
+                androidx.compose.material3.OutlinedTextField(away, { away = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("Away address (optional)") }, placeholder = { Text("https://….ui.nabu.casa") }, singleLine = true, colors = colors)
+                Text("For videos away from home: Home Assistant's remote address. The home address is tried first.",
+                    color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 error?.let { Text(it, color = W.Red, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
@@ -590,7 +595,7 @@ private fun VideosDialog(onDismiss: () -> Unit) {
             androidx.compose.material3.TextButton(enabled = !busy && folder.isNotBlank() && (!cloud || token.isNotBlank()), onClick = {
                 busy = true; error = null
                 scope.launch {
-                    runCatching { Repo.setVideos(folder, url, token) }
+                    runCatching { Repo.setVideos(folder, url, token, away) }
                         .onSuccess { ctx.toast(if (it == 0) "Connected · no videos yet: they'll appear after the next visit" else "Connected · $it video${if (it == 1) "" else "s"} found"); onDismiss() }
                         .onFailure { error = it.message ?: "Couldn't connect" }
                     busy = false

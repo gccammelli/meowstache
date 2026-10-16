@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -172,31 +173,61 @@ object Repo {
         else -> prefs.getString("camUrl")?.let { u -> secrets.get("camToken")?.let { HaHttp(u, it) } }
     }
 
-    private suspend fun loadClips() {
-        val b = clipsHa()
-        val folder = clipsFolder
-        if (b == null || folder == null) { clips.value = emptyList(); return }
-        runCatching { b.clips(folder) }.onSuccess { clips.value = it } // offline or away from home: keep the last list
+    /** The same Home Assistant through its address for away from home (Home Assistant Cloud, a VPN...), if set. */
+    private fun clipsAway(): HaBackend? {
+        val url = prefs.getString("camAwayUrl") ?: return null
+        val token = (if (localMode) secrets.get("haToken") else secrets.get("camToken")) ?: return null
+        return HaHttp(url, token)
+    }
+    private var awayUntil = 0L
+
+    /**
+     * Runs [f] on the home address, or on the away address if home doesn't answer within 3 s (".local" and LAN
+     * addresses only work at home). Away is remembered for 5 minutes, so it doesn't wait on home every time.
+     */
+    private suspend fun <T> viaHomeOrAway(f: suspend (HaBackend) -> T): T {
+        val home = clipsHa() ?: throw ApiException("Visit videos aren't connected")
+        val away = clipsAway() ?: return f(home)
+        if (nowMs() < awayUntil) return f(away)
+        val atHome = runCatching { withTimeout(3_000) { f(home) } }
+        if (atHome.isSuccess) return atHome.getOrThrow()
+        awayUntil = nowMs() + 5 * 60_000L
+        return f(away)
     }
 
-    /** Checks the folder (and, in Whisker mode, the address and token), then keeps them. Returns the number of clips found. */
-    suspend fun setVideos(folder: String, url: String? = null, rawToken: String? = null): Int {
+    private suspend fun loadClips() {
+        val folder = clipsFolder
+        if (clipsHa() == null || folder == null) { clips.value = emptyList(); return }
+        runCatching { viaHomeOrAway { it.clips(folder) } }.onSuccess { clips.value = it } // offline: keep the last list
+    }
+
+    /**
+     * Checks the folder (and, in Whisker mode, the address and token), then keeps them, with an optional address for
+     * away from home. Returns the number of clips found.
+     */
+    suspend fun setVideos(folder: String, url: String? = null, rawToken: String? = null, awayUrl: String? = null): Int {
         val f = folder.trim().trim('/').ifEmpty { throw ApiException("Enter the media folder's name") }
-        val b = if (localMode) ha().backend else HaHttp(url.orEmpty(), rawToken.orEmpty().filterNot { it.isWhitespace() })
-        val found = b.clips(f)
-        if (!localMode) { prefs.putString("camUrl", b.base); secrets.set("camToken", rawToken!!.filterNot { it.isWhitespace() }) }
+        val token = rawToken.orEmpty().filterNot { it.isWhitespace() }
+        val b = if (localMode) ha().backend else HaHttp(url.orEmpty(), token)
+        val away = awayUrl?.trim()?.takeIf { it.isNotEmpty() }?.let { HaHttp(it, if (localMode) secrets.get("haToken").orEmpty() else token) }
+        val found = runCatching { withTimeout(5_000) { b.clips(f) } }.getOrElse { e -> away?.clips(f) ?: throw e }
+        if (!localMode) { prefs.putString("camUrl", b.base); secrets.set("camToken", token) }
+        prefs.putString("camAwayUrl", away?.base)
         prefs.putString("clipsFolder", f)
+        awayUntil = 0
         clips.value = found
         return found.size
     }
 
+    val clipsAwayUrl get() = prefs.getString("camAwayUrl")
+
     fun videosOff() {
-        listOf("clipsFolder", "camUrl").forEach { prefs.putString(it, null) }
+        listOf("clipsFolder", "camUrl", "camAwayUrl").forEach { prefs.putString(it, null) }
         secrets.set("camToken", null)
         clips.value = emptyList()
     }
 
-    suspend fun clipUrl(c: Clip): String = (clipsHa() ?: throw ApiException("Visit videos aren't connected")).clipUrl(c)
+    suspend fun clipUrl(c: Clip): String = viaHomeOrAway { it.clipUrl(c) }
 
     private var ha: LocalHa? = null
     private fun ha(): LocalHa = ha ?: LocalHa(
