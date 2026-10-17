@@ -167,9 +167,10 @@ private class IosPlatformUi : PlatformUi {
 
     override fun notifyNew(alerts: List<PetAlert>) {
         for (a in Repo.takeFresh(alerts)) {
+            if (a.update) continue // shortcut: iOS doesn't rewrite a delivered notification yet; the first one stands
             val content = UNMutableNotificationContent().apply { setTitle(a.title); setBody(a.body) }
             UNUserNotificationCenter.currentNotificationCenter()
-                .addNotificationRequest(UNNotificationRequest.requestWithIdentifier(a.key, content, null), null)
+                .addNotificationRequest(UNNotificationRequest.requestWithIdentifier(a.slot, content, null), null)
         }
     }
 }

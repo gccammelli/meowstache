@@ -359,10 +359,11 @@ object Repo {
     /** The alerts not posted before: marks them sent and logs them to the Message Center. The platform then posts them. */
     fun takeFresh(alerts: List<PetAlert>): List<PetAlert> {
         val sent = sentAlertKeys()
-        val fresh = alerts.filter { it.key !in sent }
-        if (fresh.isEmpty()) return fresh
-        markSent(fresh.map { it.key })
-        fresh.forEach { addMessage(Message(nowMs(), it.title, it.body)) }
+        val all = alerts.filter { it.key !in sent }
+        if (all.isEmpty()) return all
+        markSent(all.map { it.key })
+        val fresh = mergeUpdates(all)
+        fresh.filter { !it.update }.forEach { addMessage(Message(nowMs(), it.title, it.body)) }
         return fresh
     }
 
