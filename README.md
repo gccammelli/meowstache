@@ -4,7 +4,7 @@
 
 The Litter-Robot 4 is the best self-cleaning litter box around. But its maker now puts basic features behind a subscription, and owners haven't taken it well.
 
-Subscriptions that pay for servers and new features are fine. But **history older than one week**, and alerts that can **save your cat's life** (no litter box visits, or too many), are basic features. They shouldn't be paywalled. My device. My data. This is how enshittification starts, and the Litter-Robot is heading down that path.
+Subscriptions that pay for servers and new features are fine. But **history older than one week**, and alerts that can **save your cat's life** (no litter box visits, or too many), are basic features. They shouldn't be paywalled. My device. My data. This is how enshittification starts, and Whisker is heading down that path.
 
 Meowstache is an unofficial Android app that talks to your robot and gives you:
 
