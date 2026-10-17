@@ -26,7 +26,7 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ### Android
 
-**[Download the latest APK](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)** (or browse [all releases](https://github.com/gccammelli/meowstache/releases)). An F-Droid listing is on its way. Note that the F-Droid build is signed by F-Droid, so you can't update between the two: pick one.
+**[Download the latest APK](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)**. An F-Droid listing is on its way.
 
 ### iOS
 
