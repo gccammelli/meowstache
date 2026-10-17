@@ -24,11 +24,13 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ## Download
 
+### Android
+
 **[Download the latest APK](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)** (or browse [all releases](https://github.com/gccammelli/meowstache/releases)). An F-Droid listing is on its way. Note that the F-Droid build is signed by F-Droid, so you can't update between the two: pick one.
 
 ### iPhone (beta)
 
-**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [SideStore](https://sidestore.io) (or AltStore), which signs it with your own free Apple ID. No App Store, no account of mine. It's tested in the iOS simulator; real-iPhone testers are very welcome. On iOS, alerts are only checked while the app is open for now.
+**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [iloader](https://iloader.site/), [SideStore](https://sidestore.io), [Altstore](https://altstore.io/) which signs it with your own free Apple ID. Notifications are only checked while the app is open for now.
 
 ## Before you use it
 
