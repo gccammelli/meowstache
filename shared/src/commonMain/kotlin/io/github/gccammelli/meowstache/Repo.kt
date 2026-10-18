@@ -7,6 +7,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -127,6 +129,11 @@ object Repo {
         local.value = prefs.getString("local")?.let { runCatching { json.decodeFromString<LocalData>(it) }.getOrNull() } ?: LocalData()
         state.update { it.copy(overrides = local.value.overrides) }
         messages.value = prefs.getString("messages")?.let { runCatching { json.decodeFromString<List<Message>>(it) }.getOrNull() }.orEmpty()
+        // A new weighing (live updates, a refresh) looks for its clip, which the camera saves a little later.
+        scope.launch {
+            state.map { st -> st.acts.values.maxOfOrNull { a -> a.filter { it.value == "catWeight" }.maxOfOrNull { it.ts } ?: 0L } }
+                .distinctUntilChanged().collect { if (clipsFolder != null) loadClips() }
+        }
         loadCache()
         if (demo) startDemo()
     }
@@ -199,6 +206,16 @@ object Repo {
         val folder = clipsFolder
         if (clipsHa() == null || folder == null) { clips.value = emptyList(); return }
         runCatching { viaHomeOrAway { it.clips(folder) } }.onSuccess { clips.value = it } // offline: keep the last list
+        retryClipsIfMissing()
+    }
+
+    private var clipRetry: kotlinx.coroutines.Job? = null
+    /** A visit from the last 20 minutes still without a clip (Ring saves it a minute or two later): look again in 45 s. */
+    private fun retryClipsIfMissing() {
+        val now = nowMs()
+        val waiting = state.value.acts.values.flatten().any { it.value == "catWeight" && now - it.ts in 0..20 * 60_000L && clipsFor(it.ts, clips.value).isEmpty() }
+        if (!waiting || clipRetry?.isActive == true) return
+        clipRetry = scope.launch { kotlinx.coroutines.delay(45_000); loadClips() }
     }
 
     /**
