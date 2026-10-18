@@ -10,7 +10,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "io.github.gccammelli.meowstache"
+        applicationId = "io.github.gccammelli.meowstache" + if (providers.gradleProperty("meowstache.testbed").isPresent) ".testbed" else ""
         minSdk = 26
         targetSdk = 36
         versionCode = 20

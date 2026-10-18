@@ -1,0 +1,379 @@
+{
+  "tag": "LR4/2026.10.0",
+  "version": "2026.10.0",
+  "published_at": "2026-10-05T04:54:10+02:00",
+  "release_url": "https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot/releases/tag/LR4%2F2026.10.0",
+  "archive_sha256": "8c0274d8a07aadf7252bc4dbdfc3972ce05319b7dc18db23028a932c45300f80",
+  "esphome_version": "2026.9.1",
+  "breaking_changes": "- Due to an extensive rewrite of the Cat Tracker, weight and visit counts will be reset if you renamed the entities in a custom YAML configuration. Otherwise, the built-in Cat Tracker entities will be migrated automatically. Most of this work was in preparation of eventual Litter Robot 5 support, so it shouldn't happen again any time soon.",
+  "entities": [
+    {
+      "domain": "binary_sensor",
+      "name": "Bonnet"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Cat Confirmed"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Curtain Detected"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Hopper Empty"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Night Light"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Sleeping"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Waste Drawer Full"
+    },
+    {
+      "domain": "binary_sensor",
+      "name": "Weight Detected"
+    },
+    {
+      "domain": "button",
+      "name": "Cat 1 Tracker Reset"
+    },
+    {
+      "domain": "button",
+      "name": "Cat 2 Tracker Reset"
+    },
+    {
+      "domain": "button",
+      "name": "Cat 3 Tracker Reset"
+    },
+    {
+      "domain": "button",
+      "name": "Cat 4 Tracker Reset"
+    },
+    {
+      "domain": "button",
+      "name": "Empty Litter"
+    },
+    {
+      "domain": "button",
+      "name": "Factory Reset"
+    },
+    {
+      "domain": "button",
+      "name": "Manual Cycle"
+    },
+    {
+      "domain": "button",
+      "name": "Replace Filter"
+    },
+    {
+      "domain": "button",
+      "name": "Reset"
+    },
+    {
+      "domain": "number",
+      "name": "Clean Cycle Delay"
+    },
+    {
+      "domain": "number",
+      "name": "Odor Control Delay"
+    },
+    {
+      "domain": "number",
+      "name": "Set Cat 1 Weight"
+    },
+    {
+      "domain": "number",
+      "name": "Set Cat 2 Weight"
+    },
+    {
+      "domain": "number",
+      "name": "Set Cat 3 Weight"
+    },
+    {
+      "domain": "number",
+      "name": "Set Cat 4 Weight"
+    },
+    {
+      "domain": "select",
+      "name": "Night Light Brightness"
+    },
+    {
+      "domain": "select",
+      "name": "Night Light Mode"
+    },
+    {
+      "domain": "select",
+      "name": "Panel Brightness"
+    },
+    {
+      "domain": "select",
+      "name": "WiFi Status"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 1 Feces Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 1 Feces Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 1 Urine Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 1 Urine Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 1 Visits"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 1 Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 2 Feces Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 2 Feces Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 2 Urine Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 2 Urine Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 2 Visits"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 2 Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 3 Feces Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 3 Feces Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 3 Urine Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 3 Urine Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 3 Visits"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 3 Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 4 Feces Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 4 Feces Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 4 Urine Count"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 4 Urine Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 4 Visits"
+    },
+    {
+      "domain": "sensor",
+      "name": "Cat 4 Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Clean Cycles"
+    },
+    {
+      "domain": "sensor",
+      "name": "Empty Cycles"
+    },
+    {
+      "domain": "sensor",
+      "name": "Fault"
+    },
+    {
+      "domain": "sensor",
+      "name": "Filter Cycles"
+    },
+    {
+      "domain": "sensor",
+      "name": "Hopper Status"
+    },
+    {
+      "domain": "sensor",
+      "name": "Last Cat Weight"
+    },
+    {
+      "domain": "sensor",
+      "name": "Litter Level"
+    },
+    {
+      "domain": "sensor",
+      "name": "Power Cycles"
+    },
+    {
+      "domain": "sensor",
+      "name": "Power Type"
+    },
+    {
+      "domain": "sensor",
+      "name": "Robot Status"
+    },
+    {
+      "domain": "sensor",
+      "name": "Status"
+    },
+    {
+      "domain": "sensor",
+      "name": "Waste Drawer Level"
+    },
+    {
+      "domain": "switch",
+      "name": "Auto Cycle"
+    },
+    {
+      "domain": "switch",
+      "name": "Control Panel Lockout"
+    },
+    {
+      "domain": "switch",
+      "name": "Debug Mode"
+    },
+    {
+      "domain": "switch",
+      "name": "Friday Sleep Schedule"
+    },
+    {
+      "domain": "switch",
+      "name": "Hopper"
+    },
+    {
+      "domain": "switch",
+      "name": "Monday Sleep Schedule"
+    },
+    {
+      "domain": "switch",
+      "name": "Odor Control"
+    },
+    {
+      "domain": "switch",
+      "name": "Power"
+    },
+    {
+      "domain": "switch",
+      "name": "Saturday Sleep Schedule"
+    },
+    {
+      "domain": "switch",
+      "name": "Sleep Override"
+    },
+    {
+      "domain": "switch",
+      "name": "Smart Cat Detection"
+    },
+    {
+      "domain": "switch",
+      "name": "Sunday Sleep Schedule"
+    },
+    {
+      "domain": "switch",
+      "name": "Thursday Sleep Schedule"
+    },
+    {
+      "domain": "switch",
+      "name": "Tuesday Sleep Schedule"
+    },
+    {
+      "domain": "switch",
+      "name": "Wednesday Sleep Schedule"
+    },
+    {
+      "domain": "time",
+      "name": "Friday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Friday Wake Time"
+    },
+    {
+      "domain": "time",
+      "name": "Monday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Monday Wake Time"
+    },
+    {
+      "domain": "time",
+      "name": "Saturday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Saturday Wake Time"
+    },
+    {
+      "domain": "time",
+      "name": "Sunday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Sunday Wake Time"
+    },
+    {
+      "domain": "time",
+      "name": "Thursday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Thursday Wake Time"
+    },
+    {
+      "domain": "time",
+      "name": "Tuesday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Tuesday Wake Time"
+    },
+    {
+      "domain": "time",
+      "name": "Wednesday Sleep Time"
+    },
+    {
+      "domain": "time",
+      "name": "Wednesday Wake Time"
+    }
+  ]
+}

@@ -1,0 +1,253 @@
+name: Upstream Android
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-android
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.upstream.outputs.changed }}
+      tag: ${{ steps.upstream.outputs.tag }}
+      version: ${{ steps.upstream.outputs.version }}
+      base: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: local-mode
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - id: upstream
+        run: python3 tools/upstream-lr4.py --check
+
+  repair:
+    needs: detect
+    if: needs.detect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      candidate: ${{ steps.repair.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare release evidence and beta version
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+        run: |
+          python3 tools/upstream-lr4.py --update --tag "$TAG"
+          python3 tools/autonomous-android.py bump
+      - name: Warm dependencies and record baseline failures for the agent
+        continue-on-error: true
+        run: ./gradlew testDebugUnitTest > build-baseline.log 2>&1
+      - name: Check agent authentication
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY" || { echo '::error::Add repository secret OPENAI_API_KEY to enable autonomous repairs'; exit 1; }
+      - name: Adapt to upstream firmware
+        id: repair
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/upstream-android.md
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          codex-args: '["--output-schema", ".github/codex/patch.schema.json"]'
+      # Codex is the final step; its structured patch crosses into a fresh runner.
+
+  validate:
+    needs: [detect, repair]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.base }}
+          persist-credentials: false
+      - name: Receive the candidate as data
+        env:
+          CANDIDATE: ${{ needs.repair.outputs.candidate }}
+        run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply only the permitted patch and independently verify upstream evidence
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+        run: python3 tools/autonomous-android.py apply candidate.diff --tag "$TAG"
+      - name: Contract and regression tests
+        run: |
+          python3 tools/upstream-lr4.py --self-test
+          python3 tools/upstream-lr4.py --verify
+          ./gradlew testDebugUnitTest -Pmeowstache.testbed assembleDebug
+      - uses: astral-sh/setup-uv@v6
+      - name: Real Home Assistant and upstream cat tracker integration
+        run: python3 tools/local-mock/check.py
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Android UI and command round trip
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: bash tools/android-smoke.sh app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-android-evidence
+          path: |
+            build/android-smoke/
+            shared/build/reports/tests/
+          retention-days: 14
+
+  review:
+    needs: [detect, repair]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      verdict: ${{ steps.review.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.base }}
+          persist-credentials: false
+      - name: Receive the candidate as data
+        env:
+          CANDIDATE: ${{ needs.repair.outputs.candidate }}
+        run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
+      - name: Independent release review
+        id: review
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/upstream-review.md
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          codex-args: '["--output-schema", ".github/codex/review.schema.json"]'
+
+  hardware:
+    needs: [detect, repair, validate, review]
+    if: vars.ANDROID_HARDWARE_TESTS == 'true'
+    runs-on: [self-hosted, Linux, meowstache-android]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.base }}
+          persist-credentials: false
+      - name: Require independent approval before using the physical test rig
+        env:
+          VERDICT: ${{ needs.review.outputs.verdict }}
+        run: printf '%s' "$VERDICT" | jq -e '.approved == true'
+      - name: Receive the candidate as data
+        env:
+          CANDIDATE: ${{ needs.repair.outputs.candidate }}
+        run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
+      - name: Revalidate and build isolated test app
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+        run: |
+          python3 tools/autonomous-android.py apply candidate.diff --tag "$TAG"
+          ./gradlew -Pmeowstache.testbed assembleDebug
+      - name: Test the configured Android phones
+        env:
+          ANDROID_TEST_SERIALS: ${{ secrets.ANDROID_TEST_SERIALS }}
+        run: |
+          test -n "$ANDROID_TEST_SERIALS" || { echo '::error::Set ANDROID_TEST_SERIALS to the test devices, one per line'; exit 1; }
+          index=0
+          while IFS= read -r serial; do
+            [[ -n "$serial" ]] || continue
+            index=$((index + 1))
+            ANDROID_SERIAL="$serial" ANDROID_TEST_LABEL="phone-$index" bash tools/android-smoke.sh app/build/outputs/apk/debug/app-debug.apk
+          done <<< "$ANDROID_TEST_SERIALS"
+          [[ "$index" -gt 0 ]]
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: physical-android-evidence
+          path: build/android-smoke/
+          retention-days: 14
+
+  publish:
+    needs: [detect, repair, validate, review, hardware]
+    if: >-
+      always() && needs.validate.result == 'success' && needs.review.result == 'success' &&
+      (needs.hardware.result == 'success' || needs.hardware.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Require independent approval
+        env:
+          VERDICT: ${{ needs.review.outputs.verdict }}
+        run: printf '%s' "$VERDICT" | jq -e '.approved == true'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.base }}
+          persist-credentials: false
+      - name: Receive the candidate as data
+        env:
+          CANDIDATE: ${{ needs.repair.outputs.candidate }}
+        run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Revalidate, create PR, and merge the verified update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ needs.detect.outputs.base }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          AUTO_MERGE: ${{ vars.AUTO_UPSTREAM_MERGE }}
+        run: |
+          python3 tools/autonomous-android.py apply candidate.diff --tag "$TAG"
+          branch="codex/upstream-lr4-$VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          git switch -c "$branch"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Support upstream $TAG on Android"
+          head=$(git rev-parse HEAD)
+          # Supply the short-lived token only to git's credential helper, never to candidate code.
+          git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push origin "HEAD:refs/heads/$branch"
+          pr=$(gh pr list --head "$branch" --base local-mode --json url --jq '.[0].url // empty')
+          if [[ -z "$pr" ]]; then
+            pr=$(gh pr create --base local-mode --head "$branch" --title "Android: support $TAG" --body-file docs/upstream-lr4.md)
+          fi
+          echo "Verified PR: $pr" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$AUTO_MERGE" == false ]]; then exit 0; fi
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/local-mode" --jq .object.sha)
+          [[ "$current" == "$BASE" ]] || { echo '::error::local-mode moved during validation; rerun to validate the new base'; exit 1; }
+          gh pr merge "$pr" --squash --match-head-commit "$head"
+          # GITHUB_TOKEN pushes/merges do not trigger ordinary push workflows.
+          # Explicit dispatch runs the normal signed preview release and its Android gates.
+          gh workflow run build.yml --ref local-mode

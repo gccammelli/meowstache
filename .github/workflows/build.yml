@@ -21,8 +21,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -32,7 +35,32 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Test
-        run: ./gradlew testDebugUnitTest
+        run: |
+          python3 tools/upstream-lr4.py --self-test
+          python3 tools/upstream-lr4.py --verify
+          python3 tools/autonomous-android.py self-test
+          ./gradlew testDebugUnitTest
+
+      - name: Build isolated Android UI test app
+        run: ./gradlew -Pmeowstache.testbed assembleDebug
+
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Android UI and local-mode controls
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: bash tools/android-smoke.sh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Android UI evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-ui-evidence
+          path: build/android-smoke/
 
       - name: Decode signing key
         if: startsWith(github.ref, 'refs/tags/v')
@@ -68,13 +96,30 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      - name: Exercise the signed release APK before publication
+        if: github.ref == 'refs/heads/local-mode' || startsWith(github.ref, 'refs/tags/v')
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: bash tools/android-smoke.sh app/build/outputs/apk/release/app-release.apk --production-on-emulator
+
+      - name: Signed release UI evidence
+        if: always() && (github.ref == 'refs/heads/local-mode' || startsWith(github.ref, 'refs/tags/v'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-android-ui-evidence
+          path: build/android-smoke/
+
       - name: Publish the preview APK
         if: github.ref == 'refs/heads/local-mode'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           .github/publish-preview.sh app/build/outputs/apk/release/app-release.apk apk
-          git tag -f preview-local-mode && git push -f origin refs/tags/preview-local-mode
+          git tag -f preview-local-mode
+          git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push -f origin refs/tags/preview-local-mode
 
       - name: Name the APK
         if: startsWith(github.ref, 'refs/tags/v')

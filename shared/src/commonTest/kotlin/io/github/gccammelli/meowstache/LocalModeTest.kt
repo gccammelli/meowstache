@@ -13,6 +13,36 @@ import kotlin.test.assertTrue
 class LocalModeTest {
     private val day = 86_400_000L
 
+    @Test
+    fun currentUpstreamFirmwareStillMapsToMeowstache() {
+        val device = buildJsonObject {
+            put("id", "upstream"); put("name", "Upstream LR4"); put("model", "Litter Robot 4"); put("sw", UPSTREAM_LR4_TAG)
+            put("entities", JsonArray(UPSTREAM_LR4_ENTITIES.map { (_, id, name) -> buildJsonObject {
+                put("entity_id", id); put("original_name", name)
+            } }))
+        }
+        val robot = haRobot(device)
+        val required = setOf(
+            "sensor.status", "sensor.last_cat_weight", "sensor.waste_drawer_level", "sensor.litter_level",
+            "switch.power", "number.clean_cycle_delay", "button.manual_cycle", "button.reset",
+            "sensor.clean_cycles", "sensor.hopper_status", "sensor.fault", "sensor.power_type",
+            "binary_sensor.waste_drawer_full", "binary_sensor.sleeping", "binary_sensor.hopper_empty",
+            "switch.control_panel_lockout", "switch.hopper", "select.night_light_mode",
+            "select.night_light_brightness", "select.panel_brightness", "button.replace_filter", "button.empty_litter",
+            "switch.smart_cat_detection", "switch.auto_cycle", "switch.odor_control", "switch.sleep_override",
+        )
+        assertEquals(emptySet(), required - robot.roles.keys, "firmware $UPSTREAM_LR4_TAG renamed required entities")
+        for (day in listOf("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")) {
+            assertTrue("switch.${day}_sleep_schedule" in robot.roles && "time.${day}_sleep_time" in robot.roles &&
+                "time.${day}_wake_time" in robot.roles, "firmware $UPSTREAM_LR4_TAG changed sleep schedule entities")
+        }
+        for (slot in 1..4) {
+            val cat = robot.cats.getValue(slot)
+            assertTrue(cat.weight != null && cat.visits != null && cat.entities.any { it.startsWith("number.") } &&
+                cat.entities.any { it.startsWith("button.") }, "firmware $UPSTREAM_LR4_TAG changed cat tracker slot $slot")
+        }
+    }
+
     /** Entity ids as a real Home Assistant named the mock firmware's (second robot: "_2"). */
     private val robot2 = buildJsonObject {
         put("id", "dev2"); put("name", "Bobbie"); put("model", "Litter Robot 4"); put("sw", "2026.10.0 (ESPHome 2026.9.1)")

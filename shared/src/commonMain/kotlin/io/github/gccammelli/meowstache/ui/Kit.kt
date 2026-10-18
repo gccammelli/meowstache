@@ -1,5 +1,7 @@
 package io.github.gccammelli.meowstache.ui
 
+import androidx.compose.foundation.selection.selectable
+
 import androidx.compose.runtime.collectAsState
 import io.github.gccammelli.meowstache.*
 
@@ -301,7 +303,7 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, mod
         val sel = if (dark) W.Blue.copy(alpha = if (enabled) 1f else 0.4f) else W.Accent
         options.forEachIndexed { i, o ->
             Box(Modifier.weight(1f).fillMaxHeight().background(if (i == selected) sel else Color.Transparent)
-                .let { if (enabled) it.clickable { onSelect(i) } else it }, contentAlignment = Alignment.Center) {
+                .selectable(selected = i == selected, enabled = enabled, onClick = { onSelect(i) }), contentAlignment = Alignment.Center) {
                 Text(o, color = if (i == selected) Color.White.copy(alpha = if (enabled) 1f else 0.6f) else if (dark) W.Text.copy(alpha = if (enabled) 1f else 0.6f) else Color(0xFF1E1E1E), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
