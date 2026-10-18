@@ -108,8 +108,13 @@ class MainActivity : ComponentActivity(), PlatformUi {
         val job = lifecycleScope.launch {
             runCatching { load() }
                 .onSuccess { urls ->
-                    val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { urls.map(::withoutMdns) }
-                    player.setMediaItems(direct.map { androidx.media3.common.MediaItem.fromUri(it) })
+                    // Parts that are gone (deleted, a failed download) are left out: one would fail the whole video.
+                    val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { urls.map(::withoutMdns).filter(::available) }
+                    if (direct.isEmpty()) { toast("Couldn't play the video"); dialog.dismiss(); return@onSuccess }
+                    // The parts of a visit play as one video: one progress bar across them, no gaps.
+                    val visit = androidx.media3.exoplayer.source.ConcatenatingMediaSource2.Builder().useDefaultMediaSourceFactory(this@MainActivity)
+                    direct.forEach { visit.add(androidx.media3.common.MediaItem.fromUri(it), androidx.media3.common.C.TIME_UNSET) }
+                    player.setMediaSource(visit.build())
                     player.playWhenReady = true
                     player.prepare()
                 }
@@ -119,6 +124,14 @@ class MainActivity : ComponentActivity(), PlatformUi {
         dialog.show()
         popup()
     }
+
+    /** Whether the clip is there: its first byte answers within 3 s. */
+    private fun available(url: String): Boolean = runCatching {
+        (java.net.URL(url).openConnection() as java.net.HttpURLConnection).run {
+            connectTimeout = 3_000; readTimeout = 3_000; setRequestProperty("Range", "bytes=0-0")
+            try { responseCode in 200..299 } finally { disconnect() }
+        }
+    }.getOrDefault(false)
 
     /** "homeassistant.local" costs ~1 s to look up, again for each connection the player opens: look it up once. */
     private fun withoutMdns(url: String): String {

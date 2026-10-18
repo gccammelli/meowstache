@@ -86,5 +86,6 @@ reach, like your Home Assistant Cloud address.
   meowstache**.
 - Ring hands its recording over a minute or two after the motion. The automation names the clip by that time, which
   the 10-minute match window covers; the Ring clips helper names it by when it started.
-- Ring splits a long visit into several recordings, saved about a minute apart. Meowstache plays them back to back.
+- Ring splits a long visit into several recordings, saved about a minute apart. Meowstache plays them as one video
+  (on iPhone, one after another); a part that's gone missing is left out.
 - Back-to-back cats can share one clip.
