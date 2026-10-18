@@ -12,6 +12,22 @@ It runs on any always-on computer with Python 3.10+ (a home server, a Raspberry 
 Home Assistant. Home Assistant does the downloading, through its **Downloader** integration (download folder `/media`),
 so the helper never needs access to Home Assistant's disk. You need a Ring plan that keeps recordings.
 
+## Security: what you're giving it
+
+- **Meowstache itself never touches Ring.** Only this helper does, on your own computer, and it talks only to Ring and
+  to your Home Assistant. Nothing is sent anywhere else.
+- **The token is as powerful as the Ring app.** Signing in saves a Ring token (not your password, which is used once)
+  in `ring_token_file`, readable only by your user. Whoever has that file can watch your cameras and change their
+  settings, and control a Ring Alarm if your account has one. Keep it private and out of backups you share.
+- **Best: a separate Ring account with only the litter-box camera.** In the Ring app, **Account › Shared Users**, invite
+  a second Ring account (any spare email) to that one camera, and sign the helper in with it. Its token then can't
+  reach your other cameras, doorbell or alarm. Allow it to see event history, or it won't find the recordings.
+- **Revoking it:** the helper appears in the Ring app under **Control Center › Authorized Client Devices** as
+  `ring-doorbell:Meowstache-ring-clips/1.0`; removing it there cuts it off at once. Delete the token file too.
+- **Unofficial API:** it uses the open [ring-doorbell](https://github.com/python-ring-doorbell/python-ring-doorbell)
+  library, the same one Home Assistant's Ring integration uses. Ring could change its API and break it. Home Assistant's
+  Ring integration holds the same kind of token already.
+
 ## How it decides what to save
 
 - It reads the robot's status from Home Assistant every 15 s (`robot_status_entity`, the Litter-Robot integration's
