@@ -21,7 +21,8 @@ so the helper never needs access to Home Assistant's disk. You need a Ring plan 
   settings, and control a Ring Alarm if your account has one. Keep it private and out of backups you share.
 - **Best: a separate Ring account with only the litter-box camera.** In the Ring app, **Account › Shared Users**, invite
   a second Ring account (any spare email) to that one camera, and sign the helper in with it. Its token then can't
-  reach your other cameras, doorbell or alarm. Allow it to see event history, or it won't find the recordings.
+  reach your other cameras, doorbell or alarm. Shared users can watch and download a camera's recordings in the
+  Ring app, so the helper should work the same way (not yet tried with a shared account; tell us if it doesn't).
 - **Revoking it:** the helper appears in the Ring app under **Control Center › Authorized Client Devices** (the Active Devices list) as
   `ring-doorbell:Meowstache-ring-clips/1.0`, next to Home Assistant's `ring-doorbell:HomeAssistant/ring-integration`;
   its **Remove** cuts it off at once. Delete the token file too.
