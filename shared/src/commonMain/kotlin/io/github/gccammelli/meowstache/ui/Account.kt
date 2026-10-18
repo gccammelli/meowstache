@@ -1,5 +1,8 @@
 package io.github.gccammelli.meowstache.ui
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.VisibilityOff
 import io.github.gccammelli.meowstache.*
 import kotlinx.datetime.LocalDate
 
@@ -198,6 +201,27 @@ fun AccountScreen(nav: NavHostController) {
                     Switch(Repo.showBlogs.collectAsState().value, Repo::setShowBlogs, colors = SwitchDefaults.colors(checkedTrackColor = W.Blue, checkedThumbColor = Color.White,
                         uncheckedTrackColor = Color(0xFFDDDDDD), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent))
                 }
+                HorizontalDivider(color = W.Line, thickness = 1.dp)
+                var unavailableInfo by remember { mutableStateOf(false) }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.VisibilityOff, null, tint = W.Icon, modifier = Modifier.padding(end = 16.dp).size(24.dp))
+                    Text("Show unavailable features", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Outlined.Info, "Info", tint = W.Accent, modifier = Modifier.padding(start = 8.dp).size(20.dp).clickable { unavailableInfo = true })
+                    Spacer(Modifier.weight(1f))
+                    Switch(unavailableShown(), Repo::setShowUnavailable, colors = SwitchDefaults.colors(checkedTrackColor = W.Blue, checkedThumbColor = Color.White,
+                        uncheckedTrackColor = Color(0xFFDDDDDD), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent))
+                }
+                if (unavailableInfo) AlertDialog(
+                    onDismissRequest = { unavailableInfo = false },
+                    containerColor = W.Card,
+                    title = { Text("Unavailable features", color = W.Text) },
+                    text = { Text("$APP_NAME can't fully replace Whisker's app: Whisker's cloud only lets other apps do some things, so features like " +
+                        "the sleep schedule, network setup or factory reset stay in the official app. They're shown greyed out as \"not available\", " +
+                        "or hidden with this switch.\n\nFor full control without Whisker's cloud, the community ESPHome firmware runs the robot through " +
+                        "your own Home Assistant, and $APP_NAME's local mode can then do everything.", color = W.Text2) },
+                    confirmButton = { TextButton(onClick = { unavailableInfo = false }) { Text("OK", color = W.Accent) } },
+                    dismissButton = { TextButton(onClick = { ctx.openUrl("https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot") }) { Text("About the firmware", color = W.Accent) } },
+                )
             }
             Group("Support", W.Red) {
                 ListRow("Meowstache Privacy", "What this app stores and sends", { privacy = true }, icon = Icons.Filled.PrivacyTip)
@@ -373,7 +397,8 @@ fun UnitsScreen(nav: NavHostController) = Screen({ BackTopBar("Measurement Units
 
 @Composable
 private fun Toggle(label: String, checked: Boolean, enabled: Boolean = true, info: (() -> Unit)? = null, na: Boolean = false, onChange: (Boolean) -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    if (na && !unavailableShown()) return
+    Row(Modifier.fillMaxWidth().let { if (na) it.clickable { askUnavailable(label) } else it }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(label, color = if (enabled) W.Text else W.Muted, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -430,7 +455,7 @@ fun NotificationsScreen(nav: NavHostController) {
                     Toggle("Clean Cycle Complete", t.cycleComplete, enabled = t.usage) { v -> topics { it.copy(cycleComplete = v) } }
                     Toggle("Clean Cycle Interrupted", t.cycleInterrupted, enabled = t.usage) { v -> topics { it.copy(cycleInterrupted = v) } }
                     Toggle("Cat Visit Summary", t.visits, enabled = t.usage,
-                        info = { info = "Cat Visit Summary" to "After each visit, once the cat has left: which cat, its weight and how long it stayed. The robot doesn't log when a cat leaves, so $APP_NAME works it out from the clean cycle that follows its wait timer." }) { v -> topics { it.copy(visits = v) } }
+                        info = { info = "Cat Visit Summary" to "As soon as the cat is weighed: which cat and its weight. How long it stayed is added to the same notification once the clean cycle starts: the robot doesn't log when a cat leaves, so $APP_NAME works it out from that cycle and its wait timer." }) { v -> topics { it.copy(visits = v) } }
                     Toggle("Maintenance Tips", t.maintenance, enabled = t.usage) { v -> topics { it.copy(maintenance = v) } }
                     Toggle("Cat Detected In Drawer", false, enabled = false, na = true)
                     Toggle("Hopper Enabled", false, enabled = false, na = true)
@@ -441,7 +466,7 @@ fun NotificationsScreen(nav: NavHostController) {
                 if (ctx.canInstantNotifications && !Repo.demo && !Repo.localMode) Toggle("Instant Notifications", instant,
                     info = { info = "Instant Notifications" to "Keeps a live connection to your robot, the same live updates Home Assistant uses, so " +
                         "notifications arrive within seconds instead of every 30 minutes. Gentle on Whisker's servers: one connection, and at most one " +
-                        "check every 2 minutes. Android requires a silent notification while it's on; swipe it away to hide it, and instant notifications keep working. A visit summary still waits for the clean cycle." }) { v ->
+                        "check every 2 minutes. Android requires a silent notification while it's on; swipe it away to hide it, and instant notifications keep working." }) { v ->
                     instant = v; Repo.setInstantNotifications(v); ctx.syncInstantNotifications()
                 }
                 Text(if (instant && ctx.canInstantNotifications && !Repo.localMode) "Checked by $APP_NAME on this phone as soon as your robot changes, not pushed by the manufacturer."
@@ -449,7 +474,9 @@ fun NotificationsScreen(nav: NavHostController) {
             }
             info?.let { (title, text) -> InfoDialog(title, text) { info = null } }
             Spacer(Modifier.height(14.dp))
-            WCard(Modifier.fillMaxWidth()) { Text("LitterHopper", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); NotAvailable() }
+            if (unavailableShown()) WCard(Modifier.fillMaxWidth(), onClick = { askUnavailable("LitterHopper notifications") }) {
+                Text("LitterHopper", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); NotAvailable()
+            }
 
             // ---- Meowstache's own alerts, checked on this phone every 30 minutes ----
             Spacer(Modifier.height(14.dp))

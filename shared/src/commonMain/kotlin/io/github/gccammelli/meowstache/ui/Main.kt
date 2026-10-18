@@ -314,7 +314,8 @@ fun RobotCard(r: io.github.gccammelli.meowstache.Robot, onClick: (() -> Unit)?) 
 private fun AddCard(label: String) {
     val local = Repo.localMode
     var open by remember { mutableStateOf(false) }
-    WCard(Modifier.fillMaxWidth().height(56.dp), pad = 0.dp, onClick = if (local) ({ open = true }) else null) {
+    if (!local && !unavailableShown()) return
+    WCard(Modifier.fillMaxWidth().height(56.dp), pad = 0.dp, onClick = if (local) ({ open = true }) else ({ askUnavailable(label) })) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.AddCircle, null, tint = W.Accent.copy(alpha = if (local) 1f else 0.5f), modifier = Modifier.size(24.dp))
             Text(label, color = if (local) W.Text else W.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp))
@@ -607,7 +608,6 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
     val s = state()
     val p = s.pet(id) ?: return
     val r = s.readings(id)
-    var na by remember { mutableStateOf(false) }
     var localEdit by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf<String?>(null) }
     val notes = Repo.local.collectAsState().value.petNotes[id] ?: io.github.gccammelli.meowstache.PetNotes()
@@ -621,9 +621,11 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
                 }
                 Text(petSummary(p), color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 10.dp))
                 r.lastOrNull()?.let { Text("Last Visit: ${fmt(it.ts, "dd/MM/yyyy HH:mm")}", color = W.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp)) }
-                Pill("Edit Profile", { if (Repo.localMode) localEdit = true else na = true }, Modifier.padding(top = 16.dp).width(260.dp),
-                    icon = { Icon(Icons.Filled.Edit, null, tint = W.Accent) })
-                if (!Repo.localMode) NotAvailable(Modifier.padding(top = 4.dp))
+                if (Repo.localMode || unavailableShown()) {
+                    Pill("Edit Profile", { if (Repo.localMode) localEdit = true else askUnavailable("Editing a pet's profile") }, Modifier.padding(top = 16.dp).width(260.dp),
+                        icon = { Icon(Icons.Filled.Edit, null, tint = W.Accent) })
+                    if (!Repo.localMode) NotAvailable(Modifier.padding(top = 4.dp))
+                }
             }
             Column(Modifier.padding(18.dp)) {
                 val (v, u) = splitWeight(yesterdayLbs(r))
@@ -662,7 +664,6 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
             save { it.copy(personality = PERSONALITIES.filter { t -> t in v }) }
         }
     }
-    if (na) InfoDialog("Edit Profile", "Editing pet profiles isn't available through the public API. Use the official app for now.") { na = false }
 }
 
 @Composable

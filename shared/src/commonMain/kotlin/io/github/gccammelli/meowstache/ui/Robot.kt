@@ -346,7 +346,6 @@ private fun ControlsTab(r: Robot) {
     var sleep by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf(false) }
     val filterAt = Repo.local.collectAsState().value.filterAt[r.serial]
-    var na by remember { mutableStateOf<String?>(null) }
     fun run(cmd: String, value: String? = null) = scope.launch {
         Repo.command(r, cmd, value).onFailure { ctx.toast("Command failed: ${it.message}") }
             .onSuccess { ctx.toast("Sent") }
@@ -393,7 +392,6 @@ private fun ControlsTab(r: Robot) {
         }
     }
     pending?.let { p -> ConfirmDialog(p.title, p.text, p.confirm, { run(p.command, p.value) }, { pending = null }) }
-    na?.let { InfoDialog("Not available", it) { na = null } }
     if (lights) LightsDialog(r, { lights = false }) { c, v -> run(c, v) }
     if (sleep) { if (Repo.localMode && r.has("switch.monday_sleep_schedule")) LocalSleepDialog(r) { sleep = false } else SleepDialog(r) { sleep = false } }
     val robotFilter = r.has("button.replace_filter")
@@ -437,8 +435,10 @@ fun DeviceSettingsScreen(nav: NavHostController, serial: String) {
                     }
                     RobotArt(104.dp)
                 }
-                Box(Modifier.fillMaxWidth().padding(vertical = 10.dp).height(1.dp).background(W.Line))
-                ListRow("Warranty", onClick = null)
+                if (unavailableShown()) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp).height(1.dp).background(W.Line))
+                    ListRow("Warranty", onClick = null)
+                }
             }
             Spacer(Modifier.height(14.dp))
             WCard(Modifier.fillMaxWidth()) {

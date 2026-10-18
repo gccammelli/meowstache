@@ -107,6 +107,10 @@ object Repo {
     /** Decimal places for weights: 1 like the official app, or 2 for extra precision. */
     val decimals = MutableStateFlow(1)
     val showBlogs = MutableStateFlow(false)
+    /** Whether things only Whisker's own app can do are shown (greyed, "not available"), or left out. */
+    val showUnavailable = MutableStateFlow(true)
+    /** Set when one of those is tapped: the app explains it's only in Whisker's app. */
+    val askUnavailable = MutableStateFlow<String?>(null)
     val alerts = MutableStateFlow(AlertSettings())
     val messages = MutableStateFlow<List<Message>>(emptyList())
     val local = MutableStateFlow(LocalData())
@@ -125,6 +129,7 @@ object Repo {
         units.value = (prefs.getString("units") ?: "kg")
         decimals.value = prefs.getInt("decimals", 1)
         showBlogs.value = prefs.getBoolean("showBlogs", false)
+        showUnavailable.value = prefs.getBoolean("showUnavailable", true)
         alerts.value = prefs.getString("alerts")?.let { runCatching { json.decodeFromString<AlertSettings>(it) }.getOrNull() } ?: AlertSettings()
         local.value = prefs.getString("local")?.let { runCatching { json.decodeFromString<LocalData>(it) }.getOrNull() } ?: LocalData()
         state.update { it.copy(overrides = local.value.overrides) }
@@ -325,6 +330,7 @@ object Repo {
 
     fun setUnits(u: String) { units.value = u; prefs.putString("units", u) }
     fun setShowBlogs(v: Boolean) { showBlogs.value = v; prefs.putBoolean("showBlogs", v) }
+    fun setShowUnavailable(v: Boolean) { showUnavailable.value = v; prefs.putBoolean("showUnavailable", v) }
     fun setDecimals(d: Int) { decimals.value = d; prefs.putInt("decimals", d) }
     fun setAlerts(a: AlertSettings) { alerts.value = a; prefs.putString("alerts", json.encodeToString(a)) }
     fun updateLocal(f: (LocalData) -> LocalData) {

@@ -1,5 +1,6 @@
 package io.github.gccammelli.meowstache
 
+import io.github.gccammelli.meowstache.ui.UnavailableDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +78,7 @@ fun Root() {
     Box(Modifier.fillMaxSize().background(W.Bg)) {
         if (splash) Splash() else {
             val nav = rememberNavController()
+            UnavailableDialog() // "only in Whisker's app", for any screen
             // New installs pick cloud or local first; existing installs (intro already accepted) stay on cloud.
             val start = if (!Repo.introAccepted) (if (Repo.modeChosen) "intro" else "mode") else if (Repo.signedIn) "main" else "welcome"
             NavHost(nav, start) {

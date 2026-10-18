@@ -1,5 +1,6 @@
 package io.github.gccammelli.meowstache.ui
 
+import androidx.compose.runtime.collectAsState
 import io.github.gccammelli.meowstache.*
 
 import androidx.compose.foundation.BorderStroke
@@ -168,6 +169,29 @@ fun WCard(
 fun NotAvailable(modifier: Modifier = Modifier) =
     Text("not available", modifier, color = W.Muted, fontSize = 10.sp, fontWeight = FontWeight.Normal)
 
+/** Whether to show things only Whisker's own app can do (Account › Show unavailable features). */
+@Composable
+fun unavailableShown() = Repo.showUnavailable.collectAsState().value
+
+/** Tapping one of them explains why ([feature] names it). */
+fun askUnavailable(feature: String) { Repo.askUnavailable.value = feature }
+
+/** The answer to [askUnavailable], hosted once at the app's root. */
+@Composable
+fun UnavailableDialog() {
+    val feature = Repo.askUnavailable.collectAsState().value ?: return
+    val close = { Repo.askUnavailable.value = null }
+    AlertDialog(
+        onDismissRequest = close,
+        containerColor = W.Card,
+        title = { Text("Only in Whisker's app", color = W.Text) },
+        text = { Text("$feature is only available in Whisker's official app: Whisker doesn't let other apps do it.\n\n" +
+            "You can hide everything like this; show it again any time in Account › Show unavailable features.", color = W.Text2) },
+        confirmButton = { TextButton(onClick = close) { Text("OK", color = W.Accent) } },
+        dismissButton = { TextButton(onClick = { Repo.setShowUnavailable(false); close() }) { Text("Hide unavailable features", color = W.Text2) } },
+    )
+}
+
 @Composable
 fun MainTopBar(unread: Boolean, onBell: () -> Unit, onAccount: () -> Unit, onLogo: () -> Unit) {
     Row(
@@ -251,9 +275,10 @@ fun ListRow(
     title: String, subtitle: String? = null, onClick: (() -> Unit)?, titleColor: Color = W.Text, extra: String? = null,
     icon: ImageVector? = null, divider: Boolean = false,
 ) {
+    if (onClick == null && !unavailableShown()) return // only in Whisker's app, and hidden
     if (divider) HorizontalDivider(color = W.Line, thickness = 1.dp)
     Row(
-        Modifier.fillMaxWidth().let { if (onClick != null) it.clickable(onClick = onClick) else it }.padding(vertical = if (icon != null) 17.dp else 8.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick ?: { askUnavailable(title) }).padding(vertical = if (icon != null) 17.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let { Icon(it, null, tint = if (onClick == null) W.Muted else W.Icon, modifier = Modifier.padding(end = 16.dp).size(24.dp)) }
