@@ -166,9 +166,11 @@ async def run(cfg):
             try:
                 n = await check(cam, ha, cfg, saved, now, budget)
                 if n:
-                    state_path.write_text(json.dumps(sorted(saved)[-2000:]))
-            except Exception as e:  # Ring or the network hiccupped: the next check catches up
+                    tmp = state_path.with_suffix(".tmp")  # written whole, then swapped in
+                    tmp.write_text(json.dumps(sorted(saved, key=int)[-2000:])); tmp.replace(state_path)
+            except Exception as e:  # Ring or the network hiccupped: try again in 90 s, not at the next slow check
                 log("check failed:", e)
+                last_check = time.time() - 1800 + 90
         await asyncio.sleep(15)
 
 
