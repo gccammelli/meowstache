@@ -18,11 +18,18 @@ Pick the recipe for your camera. In Home Assistant, go to **Settings › Automat
 integration's `sensor.litter_robot_4_status_code`. In local mode (ESPHome firmware), use the robot's
 `sensor.<robot>_status` instead, with `Cat detected` for `cd` and `Waiting to cycle` for `cst`.
 
-### Ring (and other cameras that record by themselves)
+### Ring
 
-Ring already records each motion event, so the automation saves Ring's recording when a cat caused it. You need a Ring
-plan that keeps recordings, and Home Assistant's **Downloader** integration: go to **Settings › Devices & services ›
-Add integration › Downloader** and set the download folder to `/media`.
+Ring already records each motion event; you need a Ring plan that keeps recordings, and Home Assistant's
+**Downloader** integration (**Settings › Devices & services › Add integration › Downloader**, download folder `/media`).
+
+**Recommended: [Meowstache Ring clips](../tools/ring-clips/README.md)**, a small helper for an always-on computer. Ring
+splits a long visit into several recordings and Home Assistant only shows the latest one, so the automation below can
+miss the first part of a visit (usually the cat walking in). The helper asks Ring's history for every recording of each
+visit and names each clip by when it started.
+
+**Simpler, no extra computer:** the automation below saves Ring's latest recording when a cat caused it. Most visits
+get their video; split visits may lose their beginning.
 
 ```yaml
 alias: Meowstache visit video (Ring)
@@ -78,6 +85,6 @@ reach, like your Home Assistant Cloud address.
 - Home Assistant doesn't delete old clips. Each one is a few MB, so delete old ones now and then in **Media ›
   meowstache**.
 - Ring hands its recording over a minute or two after the motion. The automation names the clip by that time, which
-  the 10-minute match window covers.
+  the 10-minute match window covers; the Ring clips helper names it by when it started.
 - Ring splits a long visit into several recordings, saved about a minute apart. Meowstache plays them back to back.
 - Back-to-back cats can share one clip.
