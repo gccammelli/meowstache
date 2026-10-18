@@ -1,7 +1,5 @@
 # Meowstache
 
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
-
 The Litter-Robot 4 is the best self-cleaning litter box around. But its maker now puts basic features behind a subscription, and owners haven't taken it well.
 
 Subscriptions that pay for servers and new features are fine. But **history older than one week**, and alerts that can **save your cat's life** (no litter box visits, or too many), are basic features. They shouldn't be paywalled. My device. My data. This is how enshittification starts, and Whisker is heading down that path.
@@ -65,3 +63,5 @@ MIT (see `LICENSE`). The Figtree font is under the SIL Open Font License (`LICEN
 ## Disclaimer
 
 This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. Use it at your own risk. In no event shall the authors be liable for any claim, damages or other liability, including damage to your device, loss of data or harm to your pets, arising from the use of this software.
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
