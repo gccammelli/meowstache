@@ -168,3 +168,25 @@ jobs:
           files: |
             meowstache-${{ github.ref_name }}.ipa
             meowstache.ipa
+
+  discord:
+    name: Announce release in Discord
+    needs: [build, ios]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && needs.ios.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_RELEASE_CHANNEL_ID: ${{ secrets.DISCORD_RELEASE_CHANNEL_ID }}
+          RELEASE_NAME: ${{ github.event.repository.name }}
+          RELEASE_URL: "https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+        run: |
+          [ -n "$DISCORD_BOT_TOKEN" ] || { echo "::error::Missing DISCORD_BOT_TOKEN repository secret"; exit 1; }
+          [ -n "$DISCORD_RELEASE_CHANNEL_ID" ] || { echo "::error::Missing DISCORD_RELEASE_CHANNEL_ID repository secret"; exit 1; }
+          payload=$(jq -n --arg content "$RELEASE_NAME $GITHUB_REF_NAME is released: $RELEASE_URL" '{content: $content}')
+          curl --fail-with-body --retry 2 --retry-all-errors \
+            -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$payload" \
+            "https://discord.com/api/v10/channels/$DISCORD_RELEASE_CHANNEL_ID/messages"
