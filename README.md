@@ -30,7 +30,7 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ### iOS
 
-**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [iloader](https://iloader.site/), [SideStore](https://sidestore.io), [Altstore](https://altstore.io/) which signs it with your own free Apple ID. Notifications are only checked while the app is open for now.
+**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [iloader](https://iloader.site/), [SideStore](https://sidestore.io), [Altstore](https://altstore.io/) which signs it with your own free Apple ID. Notifications are only checked while the app is open for now; for instant ones, use [Home Assistant's notifications](docs/iphone-notifications.md).
 
 ## Before you use it
 
