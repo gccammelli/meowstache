@@ -210,12 +210,15 @@ object Repo {
     }
 
     private var clipRetry: kotlinx.coroutines.Job? = null
-    /** A visit from the last 20 minutes still without a clip (Ring saves it a minute or two later): look again in 45 s. */
+    /**
+     * A visit weighed in the last 5 minutes still without a clip (Ring saves it a minute or two later): look again in
+     * 20 s. After 5 minutes it stops; opening the app later still finds a clip that came late.
+     */
     private fun retryClipsIfMissing() {
         val now = nowMs()
-        val waiting = state.value.acts.values.flatten().any { it.value == "catWeight" && now - it.ts in 0..20 * 60_000L && clipsFor(it.ts, clips.value).isEmpty() }
+        val waiting = state.value.acts.values.flatten().any { it.value == "catWeight" && now - it.ts in 0..5 * 60_000L && clipsFor(it.ts, clips.value).isEmpty() }
         if (!waiting || clipRetry?.isActive == true) return
-        clipRetry = scope.launch { kotlinx.coroutines.delay(45_000); loadClips() }
+        clipRetry = scope.launch { kotlinx.coroutines.delay(20_000); loadClips() }
     }
 
     /**
