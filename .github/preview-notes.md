@@ -6,6 +6,8 @@
 - On first launch pick **Local: Home Assistant**, enter your Home Assistant address and a long-lived access token. Or tap **Try the demo** to see it without any hardware.
 - Test rig: [tools/local-mock](https://github.com/gccammelli/meowstache/tree/local-mode/tools/local-mock).
 
+**New in beta15:** fixes beta14 crashing when a video opened.
+
 **New in beta14:** on Android a split visit plays as one video, with one progress bar across its parts; a part that's been deleted or failed to download is left out instead of stopping the video. A visit's video now appears by itself when the camera saves it (checked every 20 s for 10 minutes after the visit), with no need to reopen the app.
 
 **New in beta13:** a cat's visit is announced the moment it's weighed (it used to wait for the clean cycle, several minutes later); the visit length is added to the same notification, quietly, once the cycle starts.

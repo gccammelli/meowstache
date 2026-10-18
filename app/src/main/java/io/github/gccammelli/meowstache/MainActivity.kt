@@ -111,10 +111,14 @@ class MainActivity : ComponentActivity(), PlatformUi {
                     // Parts that are gone (deleted, a failed download) are left out: one would fail the whole video.
                     val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { urls.map(::withoutMdns).filter(::available) }
                     if (direct.isEmpty()) { toast("Couldn't play the video"); dialog.dismiss(); return@onSuccess }
-                    // The parts of a visit play as one video: one progress bar across them, no gaps.
-                    val visit = androidx.media3.exoplayer.source.ConcatenatingMediaSource2.Builder().useDefaultMediaSourceFactory(this@MainActivity)
-                    direct.forEach { visit.add(androidx.media3.common.MediaItem.fromUri(it), androidx.media3.common.C.TIME_UNSET) }
-                    player.setMediaSource(visit.build())
+                    // The parts of a visit play as one video: one progress bar across them, no gaps. Each part needs a
+                    // placeholder length until it loads (Media3 refuses "unknown" for plain files); if joining them
+                    // fails anyway, they play as a playlist.
+                    runCatching {
+                        val visit = androidx.media3.exoplayer.source.ConcatenatingMediaSource2.Builder().useDefaultMediaSourceFactory(this@MainActivity)
+                        direct.forEach { visit.add(androidx.media3.common.MediaItem.fromUri(it), 60_000L) }
+                        player.setMediaSource(visit.build())
+                    }.onFailure { player.setMediaItems(direct.map { androidx.media3.common.MediaItem.fromUri(it) }) }
                     player.playWhenReady = true
                     player.prepare()
                 }
