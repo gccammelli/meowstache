@@ -4,12 +4,9 @@ Bootstrap the local tools with `bash tools/ios/setup.sh`, then check readiness
 with `bash tools/ios/doctor.sh`. Dependencies are pinned and installed under
 ignored `build/ios-tools/`; no global npm upgrade is needed.
 
-This is bootstrap tooling, not an activated test/release pipeline. The intended
-path is a private local agent on Linux, hosted macOS compilation, private signing,
-and Appium controlling the USB-connected iPhone from Linux. A local zsign binary
-is installed for Linux x86-64, pinned to v1.1.2 with its release SHA-256 verified.
-Local signing is an option to keep keys off hosted runners, but has **not** yet
-been validated with a paid profile or an installed WDA on this iOS version.
+The private X1 rig uses hosted macOS compilation, local signing, and Appium
+controlling the USB-connected iPhone from Linux. A local zsign binary is
+installed for Linux x86-64, pinned to v1.1.2 with its release SHA-256 verified.
 
 ## One-time setup
 
@@ -126,7 +123,14 @@ build/ios-tools/python/bin/python -m unittest discover -s tools/ios -p 'test_*.p
 
 Last verified on X1 (2026-10-19): provisioned through the API, signed with zsign,
 both bundles installed, and `smoke.py` passed twice on a USB iPhone (iOS 27) through
-a preinstalled WDA over a RemoteXPC tunnel. Not yet scheduled or wired to CI.
+a preinstalled WDA over a RemoteXPC tunnel.
+
+The X1 timer runs `tools/ios/x1-smoke-gate.sh`, which starts a short-lived
+privileged RemoteXPC tunnel and loopback-only Appium server, runs the smoke, and
+cleans both processes up. It skips when the phone is absent or not ready. The
+private `iphone-smoke-enabled` marker must contain `true`; logs and evidence
+remain under ignored `build/` paths. This scheduled smoke validates the installed
+test build; installing each new CI candidate is a separate gate.
 
 Tunnel gotcha: `tunnel-creation` runs as root and records its registry port in
 root's `~/.local/share/appium-xcuitest-driver-nodejs/strongbox/tunnelRegistryPort`.
