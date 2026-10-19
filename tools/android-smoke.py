@@ -124,7 +124,7 @@ def main():
         run(*adb, "shell", "input", "keyevent", "KEYCODE_BACK")
         tap("Pets")
         find("Mochi")
-        find("Luna")
+        find("Luna", scroll=True)
         capture("pets")
         print("Android local-mode UI and command round trip passed")
     finally:
