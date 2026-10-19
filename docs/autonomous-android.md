@@ -22,10 +22,11 @@ For a new release it:
    tests discovery, pets, controls, sleep schedules and tracker management over
    HTTP/WebSocket. Android emulator tests exercise onboarding, local demo,
    devices, history, pets, and a light-setting command/readback through the UI.
-5. Gets a separate Codex review. If physical-device testing is enabled, it also
-   runs the UI tests on every configured Android phone.
-6. Creates a PR against `local-mode`, merges it after all gates pass, and
-   explicitly dispatches the normal Build workflow. That workflow tests the
+5. Gets a separate Codex review, then creates a verified PR against `local-mode`.
+6. The X1 gate downloads the already-built test APK without executing candidate
+   build code locally, runs it on at least two connected Android phones, and
+   merges only the non-networking, non-UI tier when every gate passes. It then
+   relies on the normal authenticated push event to start Build. That workflow tests the
    merged code again, builds the signed APK, exercises that exact release APK on
    an emulator, then updates the existing `preview-local-mode` GitHub release.
 
@@ -37,10 +38,10 @@ not tracked by this first pipeline.
 
 ## One-time activation
 
-Land the implementation on `local-mode`. Install the identical
+Land the implementation on `local-mode`. Install the small dispatcher at
 `.github/workflows/upstream-android.yml` on the repository's **default branch**
 (`main`) too: GitHub only schedules workflows present on the default branch.
-The scheduled workflow deliberately checks out `local-mode` and pins the
+The dispatcher starts the full workflow from `local-mode`, which pins the
 candidate to the exact base commit detected at the start.
 
 In repository Settings → Secrets and variables → Actions:
@@ -51,10 +52,11 @@ In repository Settings → Secrets and variables → Actions:
 - Retain the existing `BETA_KEYSTORE_BASE64` secret for preview signing. Stable
   tags continue to use the existing release-keystore secrets.
 - Allow GitHub Actions to create pull requests. The workflow requests only the
-  permissions each job needs. Repository rules must permit the bot to merge;
-  the workflow never uses an administrator bypass.
-- Set `AUTO_UPSTREAM_MERGE=false` to leave verified PRs for manual merging.
-  Otherwise successful candidates are merged and released automatically.
+  permissions each job needs. The X1 gate merges with the `gccammelli` account
+  and never uses an administrator bypass.
+- The local enable marker `$CAMMELLI_CREDENTIALS_DIR/meowstache-auto-merge-enabled`
+  must contain `true`. Without it, verified PRs remain open. Networking and UI
+  changes always require maintainer review.
 
 Run **Actions → Upstream Android → Run workflow** once to verify credentials and
 scheduling. If the tracked firmware is already current, only detection runs.
@@ -62,23 +64,24 @@ The current baseline is `LR4/2026.10.0`.
 
 The agent has no GitHub write credential, signing key, real HA credentials or
 physical-device access. It returns a structured patch as its final step.
-Verification and publication use separate runners. The physical runner only
-builds a patch after hosted tests and independent review pass; register it under
-a dedicated OS account without unrelated credentials.
+Verification and publication use separate GitHub-hosted runners. Candidate code
+never executes on X1: the local gate only installs the validated APK artifact on
+dedicated phones.
 
 ## Physical Android test rig
 
-Hosted Android emulator tests work without an X1 runner. To make real phones an
-additional required gate, register a repository-specific GitHub Actions runner
-on the test computer, with labels `self-hosted`, `Linux`, `meowstache-android`.
-Install Java 17, Android SDK/platform/build tools, Python 3.13+, `adb`, and `jq`;
-set `ANDROID_HOME`, accept Android SDK licenses, and authorize USB debugging on
-the dedicated test phones. The runner must be online before enabling this gate.
+Do not register X1 as a self-hosted runner for this public repository: a hostile
+pull request could target it. Instead, `tools/x1-upstream-gate.sh` polls verified
+upstream PRs, checks their originating GitHub run, downloads its APK artifact and
+tests every connected ADB device. It requires at least two phones and keeps their
+serials out of source control. Create the local enable marker only after the user
+timer is installed. Dedicated phones must remain connected, unlocked and USB-
+authorized; an unattended test cannot unlock a passcode screen.
 
-Set repository secret `ANDROID_TEST_SERIALS` to their ADB serials, one per line,
-then set variable `ANDROID_HARDWARE_TESTS=true`. Keep device identifiers out of
-source control. If an enabled phone test fails, publication stops. Use dedicated,
-unlocked test devices: an unattended test cannot unlock a passcode screen.
+The user service runs from a detached, clean gate worktree under
+`$XDG_DATA_HOME/cammelli/meowstache-gate`, not from the developer's
+mutable checkout. Its oneshot has a 30-minute timeout and its calendar timer
+recovers missed runs after reboot.
 
 Real-device tests use `-Pmeowstache.testbed`, which installs
 `io.github.gccammelli.meowstache.testbed` alongside the regular app. Only this
@@ -109,10 +112,11 @@ maintainer. Known breaking changes that are handled by the app still need
 explicit migration notes; a firmware reset cannot be undone by Meowstache.
 
 A failed candidate leaves the tracked baseline unchanged, so the next daily
-check retries it. A concurrent change to `local-mode` blocks merging the stale
-candidate; rerun against the new base. Workflow retries use distinct bot branches
-to avoid overwriting a previous candidate. Set `AUTO_UPSTREAM_MERGE=false` before
-rerunning if a maintainer is investigating an existing candidate PR.
+check retries it. A concurrent change to `local-mode` blocks the X1 gate from
+merging the stale candidate; rerun against the new base. Workflow retries use
+distinct bot branches to avoid overwriting a previous candidate. Remove or
+remove the local enable marker before rerunning if a maintainer is investigating
+an existing candidate PR.
 
 If merging succeeded but the subsequent Build failed, rerun **Build** on
 `local-mode`: the baseline already advanced, so detection will not repeat the

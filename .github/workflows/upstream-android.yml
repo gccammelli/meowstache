@@ -54,6 +54,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
       - name: Prepare release evidence and beta version
         env:
           TAG: ${{ needs.detect.outputs.tag }}
@@ -99,6 +101,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
       - name: Apply only the permitted patch and independently verify upstream evidence
         env:
           TAG: ${{ needs.detect.outputs.tag }}
@@ -109,6 +113,8 @@ jobs:
           python3 tools/upstream-lr4.py --verify
           ./gradlew testDebugUnitTest -Pmeowstache.testbed assembleDebug
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
       - name: Real Home Assistant and upstream cat tracker integration
         run: python3 tools/local-mock/check.py
       - name: Enable emulator acceleration
@@ -127,10 +133,12 @@ jobs:
           path: |
             build/android-smoke/
             shared/build/reports/tests/
+            app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
   review:
-    needs: [detect, repair]
+    needs: [detect, repair, validate]
+    if: needs.validate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -154,60 +162,15 @@ jobs:
           safety-strategy: drop-sudo
           codex-args: '["--output-schema", ".github/codex/review.schema.json"]'
 
-  hardware:
-    needs: [detect, repair, validate, review]
-    if: vars.ANDROID_HARDWARE_TESTS == 'true'
-    runs-on: [self-hosted, Linux, meowstache-android]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.detect.outputs.base }}
-          persist-credentials: false
-      - name: Require independent approval before using the physical test rig
-        env:
-          VERDICT: ${{ needs.review.outputs.verdict }}
-        run: printf '%s' "$VERDICT" | jq -e '.approved == true'
-      - name: Receive the candidate as data
-        env:
-          CANDIDATE: ${{ needs.repair.outputs.candidate }}
-        run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
-      - name: Revalidate and build isolated test app
-        env:
-          TAG: ${{ needs.detect.outputs.tag }}
-        run: |
-          python3 tools/autonomous-android.py apply candidate.diff --tag "$TAG"
-          ./gradlew -Pmeowstache.testbed assembleDebug
-      - name: Test the configured Android phones
-        env:
-          ANDROID_TEST_SERIALS: ${{ secrets.ANDROID_TEST_SERIALS }}
-        run: |
-          test -n "$ANDROID_TEST_SERIALS" || { echo '::error::Set ANDROID_TEST_SERIALS to the test devices, one per line'; exit 1; }
-          index=0
-          while IFS= read -r serial; do
-            [[ -n "$serial" ]] || continue
-            index=$((index + 1))
-            ANDROID_SERIAL="$serial" ANDROID_TEST_LABEL="phone-$index" bash tools/android-smoke.sh app/build/outputs/apk/debug/app-debug.apk
-          done <<< "$ANDROID_TEST_SERIALS"
-          [[ "$index" -gt 0 ]]
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: physical-android-evidence
-          path: build/android-smoke/
-          retention-days: 14
-
   publish:
-    needs: [detect, repair, validate, review, hardware]
+    needs: [detect, repair, validate, review]
     if: >-
-      always() && needs.validate.result == 'success' && needs.review.result == 'success' &&
-      (needs.hardware.result == 'success' || needs.hardware.result == 'skipped')
+      needs.validate.result == 'success' && needs.review.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
-      actions: write
     steps:
       - name: Require independent approval
         env:
@@ -224,19 +187,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Revalidate, create PR, and merge the verified update
+      - name: Revalidate and create the verified PR
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE: ${{ needs.detect.outputs.base }}
           TAG: ${{ needs.detect.outputs.tag }}
           VERSION: ${{ needs.detect.outputs.version }}
-          AUTO_MERGE: ${{ vars.AUTO_UPSTREAM_MERGE }}
         run: |
           python3 tools/autonomous-android.py apply candidate.diff --tag "$TAG"
           branch="codex/upstream-lr4-$VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           git switch -c "$branch"
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Support upstream $TAG on Android"
-          head=$(git rev-parse HEAD)
+          git rev-parse HEAD > upstream-pr-head.txt
           # Supply the short-lived token only to git's credential helper, never to candidate code.
           git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push origin "HEAD:refs/heads/$branch"
           pr=$(gh pr list --head "$branch" --base local-mode --json url --jq '.[0].url // empty')
@@ -244,10 +206,8 @@ jobs:
             pr=$(gh pr create --base local-mode --head "$branch" --title "Android: support $TAG" --body-file docs/upstream-lr4.md)
           fi
           echo "Verified PR: $pr" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$AUTO_MERGE" == false ]]; then exit 0; fi
-          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/local-mode" --jq .object.sha)
-          [[ "$current" == "$BASE" ]] || { echo '::error::local-mode moved during validation; rerun to validate the new base'; exit 1; }
-          gh pr merge "$pr" --squash --match-head-commit "$head"
-          # GITHUB_TOKEN pushes/merges do not trigger ordinary push workflows.
-          # Explicit dispatch runs the normal signed preview release and its Android gates.
-          gh workflow run build.yml --ref local-mode
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upstream-pr-head
+          path: upstream-pr-head.txt
+          retention-days: 14

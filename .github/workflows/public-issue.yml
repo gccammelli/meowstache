@@ -1,22 +1,29 @@
 name: Public issue agent
 
 on:
-  issues:
-    types: [opened, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Queued issue number
+        required: true
+        type: number
 
 permissions:
   contents: read
 
 concurrency:
-  group: public-issue-${{ github.event.issue.number }}
+  group: public-issue-${{ inputs.issue_number }}
   cancel-in-progress: false
+
+env:
+  BASE_BRANCH: local-mode
 
 jobs:
   intake:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
+      issues: read
     outputs:
       run: ${{ steps.gate.outputs.run }}
       base: ${{ steps.gate.outputs.base }}
@@ -24,43 +31,36 @@ jobs:
       - id: gate
         env:
           GH_TOKEN: ${{ github.token }}
-          ACTION: ${{ github.event.action }}
-          ACTOR: ${{ github.actor }}
-          ASSOCIATION: ${{ github.event.issue.author_association }}
-          BODY: ${{ github.event.issue.body }}
-          ISSUE: ${{ github.event.issue.number }}
-          LABEL: ${{ github.event.label.name }}
-          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
-          REPOSITORY: ${{ github.repository }}
           ENABLED: ${{ secrets.PUBLIC_ISSUE_AGENT_ENABLED }}
-          DAILY_LIMIT: "2"
-          TRUSTED_ACTORS: gccammelli,github-actions[bot]
+          ISSUE: ${{ inputs.issue_number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           echo "run=false" >> "$GITHUB_OUTPUT"
           [[ "$ENABLED" == "true" ]] || exit 0
-          if [[ "$ACTION" == "labeled" && "$LABEL" != "agent-ready" ]]; then exit 0; fi
-          trusted=0
-          case ",$TRUSTED_ACTORS," in *",$ACTOR,"*) trusted=1;; esac
-          case "$ASSOCIATION" in OWNER|MEMBER|COLLABORATOR) trusted=1;; esac
-          forced=0
-          if [[ "$ACTION" == "labeled" && "$LABEL" == "agent-ready" && "$trusted" == 1 ]]; then forced=1; fi
-          if jq -e 'index("agent-attempted")' <<< "$LABELS" >/dev/null && [[ "$forced" == 0 ]]; then exit 0; fi
-          jq -e 'index("bug") or index("enhancement")' <<< "$LABELS" >/dev/null || exit 0
-          [[ ${#BODY} -ge 40 && ${#BODY} -le 60000 ]] || exit 0
-          limit=${DAILY_LIMIT:-2}
-          if [[ "$trusted" == 0 && "$forced" == 0 ]]; then
-            since=$(date -u +%F)
-            count=$(gh api -X GET search/issues -f q="repo:$REPOSITORY is:issue label:agent-attempted updated:>=$since" --jq .total_count)
-            if (( count >= limit )); then
-              gh issue edit "$ISSUE" --repo "$REPOSITORY" --add-label agent-backlog
-              gh issue comment "$ISSUE" --repo "$REPOSITORY" --body "The public-agent daily budget is full. This issue is safely queued for maintainer review; no code or secrets were exposed."
-              exit 0
-            fi
-          fi
-          gh issue edit "$ISSUE" --repo "$REPOSITORY" --add-label agent-attempted,agent-working --remove-label agent-backlog,agent-ready || true
-          gh issue comment "$ISSUE" --repo "$REPOSITORY" --body "Cammelli bot is assessing this request in a restricted, secretless workspace. Safe changes may become a draft pull request; public requests are never auto-merged."
-          echo "base=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          issue_json=$(gh issue view "$ISSUE" --repo "$REPOSITORY" --json body,labels,state)
+          [[ $(jq -r .state <<< "$issue_json") == OPEN ]] || exit 0
+          jq -e '[.labels[].name] | index("agent-working")' <<< "$issue_json" >/dev/null || exit 0
+          jq -e '[.labels[].name] | index("bug") or index("enhancement")' <<< "$issue_json" >/dev/null || exit 0
+          body_length=$(jq -r '.body | length' <<< "$issue_json")
+          (( body_length >= 40 && body_length <= 60000 )) || exit 0
+          base=$(gh api "repos/$REPOSITORY/git/ref/heads/$BASE_BRANCH" --jq .object.sha)
+          echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "run=true" >> "$GITHUB_OUTPUT"
+
+  intake-declined:
+    needs: intake
+    if: always() && needs.intake.outputs.run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh issue edit "$ISSUE" --repo "$REPOSITORY" --remove-label agent-attempted,agent-working --add-label agent-needs-review
+          gh issue comment "$ISSUE" --repo "$REPOSITORY" --body "The queued request changed or no longer meets the guarded automation boundary. No agent ran; maintainer review is required."
 
   repair:
     needs: intake
@@ -69,6 +69,7 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+      issues: read
     outputs:
       candidate: ${{ steps.agent.outputs.final-message }}
     steps:
@@ -81,13 +82,14 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
       - name: Store the issue as untrusted data
         env:
-          ISSUE: ${{ github.event.issue.number }}
-          AUTHOR: ${{ github.event.issue.user.login }}
-          TITLE: ${{ github.event.issue.title }}
-          BODY: ${{ github.event.issue.body }}
-        run: jq -n --arg issue "$ISSUE" --arg author "$AUTHOR" --arg title "$TITLE" --arg body "$BODY" '{issue:$issue,author:$author,title:$title,body:$body}' > .agent-issue.json
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue_number }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh issue view "$ISSUE" --repo "$REPOSITORY" --json number,author,title,body --jq '{issue:(.number|tostring),author:.author.login,title,body}' > .agent-issue.json
       - name: Check agent authentication
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -101,7 +103,7 @@ jobs:
           sandbox: workspace-write
           safety-strategy: drop-sudo
           codex-args: '["--output-schema", ".github/codex/public-issue.schema.json"]'
-      # Codex stays last: only structured output crosses into a fresh, secretless runner.
+      # Codex stays last: only structured output crosses into a fresh runner.
 
   validate:
     needs: [intake, repair]
@@ -124,6 +126,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
       - name: Enforce patch boundary
         run: python3 .github/scripts/public_issue_patch.py candidate.diff --kind mobile
       - name: Regression tests
@@ -152,7 +156,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE: ${{ needs.repair.outputs.candidate }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ inputs.issue_number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           branch="cammelli-bot/issue-$ISSUE-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -160,17 +164,20 @@ jobs:
           git -c user.name='cammelli-bot' -c user.email='meowstache.app@gmail.com' commit -m "Propose fix for issue #$ISSUE"
           git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push origin "HEAD:refs/heads/$branch"
           python3 - <<'PY'
-          import json, os, pathlib
+          import json, os, pathlib, re
           result = json.loads(os.environ["CANDIDATE"])
           issue = os.environ["ISSUE"]
+          def safe_text(value):
+              value = str(value)[:4000].replace("@", "@\u200b")
+              return re.sub(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+(?=#\d+)", r"\1\u200b ", value)
           pathlib.Path("pr-body.md").write_text(
-              f"Closes #{issue}\n\n## Agent summary\n\n{result['summary']}\n\n"
-              f"## Tests reported by the agent\n\n{result['tests']}\n\n"
+              f"Closes #{issue}\n\n## Agent summary\n\n{safe_text(result['summary'])}\n\n"
+              f"## Tests reported by the agent\n\n{safe_text(result['tests'])}\n\n"
               "## Maintainer gate\n\n- [ ] Review the code and threat boundary\n"
               "- [ ] Confirm CI passes\n- [ ] Add/accept before-and-after visuals if user-facing\n"
               "- [ ] Explicitly approve and merge\n\nThis public-issue PR can never auto-merge.\n")
           PY
-          pr=$(gh pr create --repo "$REPOSITORY" --base main --head "$branch" --draft --title "Agent proposal for issue #$ISSUE" --body-file pr-body.md)
+          pr=$(gh pr create --repo "$REPOSITORY" --base "$BASE_BRANCH" --head "$branch" --draft --title "Agent proposal for issue #$ISSUE" --body-file pr-body.md)
           gh pr edit "$pr" --repo "$REPOSITORY" --add-label agent-generated,needs-maintainer-approval
           gh issue edit "$ISSUE" --repo "$REPOSITORY" --remove-label agent-working --add-label agent-pr
           gh issue comment "$ISSUE" --repo "$REPOSITORY" --body "A tested draft proposal is ready for maintainer review: $pr. It will not merge without explicit approval."
@@ -181,7 +188,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_RELEASE_CHANNEL_ID }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ inputs.issue_number }}
         run: |
           [[ -n "$DISCORD_BOT_TOKEN" && -n "$DISCORD_CHANNEL_ID" ]] || exit 0
           payload=$(jq -n --arg content "Draft agent PR for $GITHUB_REPOSITORY#$ISSUE needs approval: $PR_URL" '{content:$content}')
@@ -196,7 +203,7 @@ jobs:
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ inputs.issue_number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           gh issue edit "$ISSUE" --repo "$REPOSITORY" --remove-label agent-working --add-label agent-needs-review
@@ -211,7 +218,7 @@ jobs:
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ inputs.issue_number }}
           REPOSITORY: ${{ github.repository }}
         run: |
           gh issue edit "$ISSUE" --repo "$REPOSITORY" --remove-label agent-working --add-label agent-needs-review

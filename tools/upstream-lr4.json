@@ -3,6 +3,7 @@
   "version": "2026.10.0",
   "published_at": "2026-10-05T04:54:10+02:00",
   "release_url": "https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot/releases/tag/LR4%2F2026.10.0",
+  "commit_sha": "629c501c55e19b11d281fe965acc00f23ecb8867",
   "archive_sha256": "8c0274d8a07aadf7252bc4dbdfc3972ce05319b7dc18db23028a932c45300f80",
   "esphome_version": "2026.9.1",
   "breaking_changes": "- Due to an extensive rewrite of the Cat Tracker, weight and visit counts will be reset if you renamed the entities in a custom YAML configuration. Otherwise, the built-in Cat Tracker entities will be migrated automatically. Most of this work was in preparation of eventual Litter Robot 5 support, so it shouldn't happen again any time soon.",

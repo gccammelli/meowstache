@@ -15,6 +15,10 @@ ALLOWED = {PREFIX + name for name in (
     "HomeAssistant.kt", "DemoLocal.kt", "Models.kt", "ui/Robot.kt", "ui/Main.kt",
 )} | set(GENERATED) | {APP, "docs/upstream-lr4.md",
     "shared/src/commonTest/kotlin/io/github/gccammelli/meowstache/UpstreamCompatibilityTest.kt"}
+ADDITIVE_TEST = "shared/src/commonTest/kotlin/io/github/gccammelli/meowstache/UpstreamCompatibilityTest.kt"
+MANUAL_REVIEW = {PREFIX + name for name in (
+    "HomeAssistant.kt", "DemoLocal.kt", "Models.kt", "ui/Robot.kt", "ui/Main.kt",
+)} | {ADDITIVE_TEST}
 
 
 def git(*args):
@@ -39,9 +43,20 @@ def allowed_patch(patch):
         additions, deletions, path = record.decode().split("\t", 2)
         if path not in ALLOWED or not additions.isdigit() or not deletions.isdigit():
             raise ValueError(f"Agent patch changes a protected path or binary file: {path}")
+        if path == ADDITIVE_TEST and int(deletions):
+            raise ValueError("Existing upstream compatibility assertions may not be removed")
         paths.append(path)
     if not set(GENERATED + [APP, "docs/upstream-lr4.md"]) <= set(paths):
         raise ValueError("Candidate must update the firmware lock, fixture, mock pin, version, and release notes")
+
+
+def auto_merge_safe(patch):
+    records = subprocess.check_output(["git", "apply", "--numstat", "-z", str(patch)], cwd=ROOT).split(b"\0")
+    changed = {record.decode().split("\t", 2)[2] for record in filter(None, records)}
+    blocked = sorted(changed & MANUAL_REVIEW)
+    if blocked:
+        raise ValueError("Runtime networking or UI changes require maintainer review: " + ", ".join(blocked))
+    print("Candidate is within the non-UI auto-merge tier")
 
 
 def apply(patch, tag):
@@ -76,6 +91,7 @@ def self_test():
         valid = "".join(diff(path) for path in GENERATED + [APP, "docs/upstream-lr4.md"])
         patch.write_text(valid)
         allowed_patch(patch)
+        auto_merge_safe(patch)
         for path in (".github/workflows/build.yml", "tools/android-smoke.py",
                      PREFIX + "Repo.kt", "shared/src/commonTest/kotlin/io/github/gccammelli/meowstache/LocalModeTest.kt"):
             patch.write_text(valid + diff(path))
@@ -85,6 +101,13 @@ def self_test():
                 pass
             else:
                 raise AssertionError(f"Protected path was accepted: {path}")
+        patch.write_text(valid + diff(ADDITIVE_TEST))
+        try:
+            allowed_patch(patch)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Existing upstream assertions could be removed")
         patch.write_text(diff(PREFIX + "HomeAssistant.kt"))
         try:
             allowed_patch(patch)
@@ -92,6 +115,13 @@ def self_test():
             pass
         else:
             raise AssertionError("Incomplete upstream evidence was accepted")
+        patch.write_text(valid + diff(PREFIX + "HomeAssistant.kt"))
+        try:
+            auto_merge_safe(patch)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Sensitive runtime change was accepted for auto-merge")
     print("Autonomous workflow boundary self-test passed")
 
 
@@ -103,11 +133,19 @@ def main():
     check = sub.add_parser("apply")
     check.add_argument("patch", type=Path)
     check.add_argument("--tag", required=True)
+    patch_check = sub.add_parser("check-patch")
+    patch_check.add_argument("patch", type=Path)
+    merge_check = sub.add_parser("auto-merge-safe")
+    merge_check.add_argument("patch", type=Path)
     args = parser.parse_args()
     if args.action == "bump":
         (ROOT / APP).write_text(bumped((ROOT / APP).read_text()))
     elif args.action == "apply":
         apply(args.patch.resolve(), args.tag)
+    elif args.action == "check-patch":
+        allowed_patch(args.patch.resolve())
+    elif args.action == "auto-merge-safe":
+        auto_merge_safe(args.patch.resolve())
     else:
         self_test()
 
