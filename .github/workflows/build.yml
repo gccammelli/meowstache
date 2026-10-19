@@ -141,6 +141,7 @@ jobs:
   # screenshots, all on GitHub's free macOS runners, so no Mac is needed to build.
   ios:
     runs-on: macos-15-intel
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:

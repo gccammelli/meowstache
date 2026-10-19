@@ -16,6 +16,7 @@ WDA = TEST_APP + ".wda.xctrunner"
 PANDY = "io.github.gccammelli.pandy.testbed"
 LIBERPET = "io.github.gccammelli.liberpet.testbed"
 INSTALL_TARGETS = {"app": TEST_APP, "wda": WDA, "pandy": PANDY, "liberpet": LIBERPET}
+INSTALL_TIMEOUT_SECONDS = 300
 
 
 def validate_profile(info, profile, expected, team, udid):
@@ -83,7 +84,7 @@ async def install(path, expected, team):
             raise ValueError("The phone must be paired first")
         inspect_ipa(path, expected, team, devices[0].serial)
         async with InstallationProxyService(client) as proxy:
-            await proxy.install_from_local(path)
+            await asyncio.wait_for(proxy.install_from_local(path), timeout=INSTALL_TIMEOUT_SECONDS)
             apps = await proxy.get_apps(bundle_identifiers=[expected])
             if expected not in apps:
                 raise RuntimeError("Installation did not produce the expected app")

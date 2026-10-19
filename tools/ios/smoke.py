@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Bounded Appium UI checks against only the isolated Meowstache test app."""
+"""Bounded Appium UI checks against allowlisted isolated Cammelli test apps."""
+import argparse
 import base64
 import json
 import os
@@ -9,15 +10,18 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from install import TEST_APP, WDA
+from install import LIBERPET, PANDY, TEST_APP, WDA
 
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 LOCAL_DEMO = ("Demo mode: made-up robots on the ESPHome firmware, through a pretend "
               "Home Assistant. Log out to connect yours.")
+PANDY_DEMO = "Demo: a pretend printer. Every control works on it. To connect yours: Me › Settings › Leave the demo."
+LIBERPET_DEMO = "This is the demo: a made-up home. To connect yours: Me › Settings › Leave the demo."
 
 
 class Driver:
-    def __init__(self):
+    def __init__(self, bundle=TEST_APP):
+        self.bundle = bundle
         self.session = None
 
     def request(self, method, route, data=None):
@@ -39,8 +43,16 @@ class Driver:
         return self.request("POST", "/execute/sync", {"script": script, "args": [args]})
 
     def foreground(self):
-        if self.execute("mobile: activeAppInfo", {}).get("bundleId") != TEST_APP:
+        if self.execute("mobile: activeAppInfo", {}).get("bundleId") != self.bundle:
             raise RuntimeError("Test app is not foreground; refusing UI access/capture")
+
+    def wait_foreground(self, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.execute("mobile: activeAppInfo", {}).get("bundleId") == self.bundle:
+                return
+            time.sleep(0.2)
+        raise RuntimeError("Test app did not become foreground")
 
     def find(self, label, timeout=25, scroll=False):
         deadline = time.monotonic() + timeout
@@ -71,10 +83,11 @@ class Driver:
         (directory / f"{label}.xml").write_text(source)
 
 
-def exercise(driver, directory):
+def meowstache_exercise(driver, directory):
     # Relaunch only the test app; no reset, uninstall, alert acceptance or production app access.
-    driver.execute("mobile: terminateApp", {"bundleId": TEST_APP})
-    driver.execute("mobile: launchApp", {"bundleId": TEST_APP})
+    driver.execute("mobile: terminateApp", {"bundleId": driver.bundle})
+    driver.execute("mobile: launchApp", {"bundleId": driver.bundle})
+    driver.wait_foreground()
     try:
         driver.find("Robbie", timeout=3)
     except AssertionError:
@@ -106,6 +119,66 @@ def exercise(driver, directory):
     driver.capture(directory, "pets")
 
 
+def pandy_exercise(driver, directory):
+    driver.execute("mobile: terminateApp", {"bundleId": driver.bundle})
+    driver.execute("mobile: launchApp", {"bundleId": driver.bundle})
+    driver.wait_foreground()
+    try:
+        driver.find(PANDY_DEMO, timeout=10)
+    except AssertionError:
+        driver.tap("Try the demo", scroll=True)
+    driver.find(PANDY_DEMO)
+    driver.find("Demo X1C")
+    driver.find("Articulated Panda Keychain")
+    driver.capture(directory, "home")
+    try:
+        driver.find("Pause", timeout=3)
+    except AssertionError:
+        driver.tap("Resume")
+        driver.find("Pause")
+    driver.tap("Pause")
+    driver.find("Resume")
+    driver.tap("Resume")
+    driver.find("Pause")
+    driver.tap("Me")
+    driver.tap("Printing\nHistory")
+    driver.find("Benchy", scroll=True)
+    driver.capture(directory, "history")
+    driver.tap("Back")
+    driver.tap("Filament")
+    driver.find("AMS A")
+    driver.capture(directory, "filament")
+
+
+def liberpet_exercise(driver, directory):
+    driver.execute("mobile: terminateApp", {"bundleId": driver.bundle})
+    driver.execute("mobile: launchApp", {"bundleId": driver.bundle})
+    driver.wait_foreground()
+    try:
+        driver.find(LIBERPET_DEMO, timeout=10)
+    except AssertionError:
+        driver.tap("Try the demo: a made-up home with a feeder, two fountains and two cats. No Home Assistant needed.",
+                   scroll=True)
+    driver.find(LIBERPET_DEMO)
+    driver.find("Granary Camera Feeder", scroll=True)
+    driver.find("Dockstream Smart Fountain", scroll=True)
+    driver.capture(directory, "devices")
+    driver.tap("Granary Camera Feeder")
+    driver.find("Pets Linked")
+    driver.tap("Settings")
+    driver.find("Indicator Lights", scroll=True)
+    driver.capture(directory, "settings")
+    driver.tap("Back")
+    driver.tap("Back")
+    driver.tap("Care")
+    driver.find("Mochi")
+    driver.find("Luna")
+    driver.capture(directory, "care")
+    driver.tap("Me")
+    driver.find("Settings")
+    driver.capture(directory, "me")
+
+
 async def device_version():
     from pymobiledevice3.lockdown import create_using_usbmux
     from pymobiledevice3.usbmux import list_devices
@@ -121,28 +194,39 @@ async def device_version():
         await client.close()
 
 
+APPS = {
+    "meowstache": (TEST_APP, meowstache_exercise),
+    "pandy": (PANDY, pandy_exercise),
+    "liberpet": (LIBERPET, liberpet_exercise),
+}
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("app", nargs="?", choices=APPS, default="meowstache")
+    args = parser.parse_args()
+    bundle, exercise = APPS[args.app]
     import asyncio
     import logging
     logging.disable(logging.CRITICAL)
     os.umask(0o077)
-    directory = Path(__file__).resolve().parents[2] / "build/ios-smoke" / time.strftime("%Y%m%d-%H%M%S")
+    directory = Path(__file__).resolve().parents[2] / "build/ios-smoke" / args.app / time.strftime("%Y%m%d-%H%M%S")
     directory.mkdir(parents=True, mode=0o700)
     udid, version = asyncio.run(device_version())
-    driver = Driver()
+    driver = Driver(bundle)
     try:
         value = driver.request("POST", "/session", {"capabilities": {"alwaysMatch": {
             "platformName": "iOS", "appium:automationName": "xcuitest",
             "appium:udid": udid, "appium:platformVersion": version,
-            "appium:bundleId": TEST_APP, "appium:noReset": True, "appium:fullReset": False,
+            "appium:bundleId": bundle, "appium:noReset": True, "appium:fullReset": False,
             "appium:autoLaunch": False, "appium:usePreinstalledWDA": True,
             "appium:updatedWDABundleId": WDA, "appium:updatedWDABundleIdSuffix": "",
             "appium:newCommandTimeout": 60, "appium:wdaLaunchTimeout": 90000,
         }}})
         driver.session = value["sessionId"]
         exercise(driver, directory)
-        (directory / "result.json").write_text(json.dumps({"passed": True, "mode": "local-demo"}))
-        print("iPhone local-demo UI smoke passed; private evidence saved under build/ios-smoke/")
+        (directory / "result.json").write_text(json.dumps({"passed": True, "mode": "local-demo", "app": args.app}))
+        print(f"{args.app} iPhone local-demo UI smoke passed; private evidence saved under build/ios-smoke/")
     finally:
         if driver.session:
             driver.request("DELETE", "")

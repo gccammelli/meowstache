@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import zipfile
 
-from install import inspect_ipa, LIBERPET, PANDY, TEST_APP, validate_profile, WDA
+from install import inspect_ipa, INSTALL_TIMEOUT_SECONDS, LIBERPET, PANDY, TEST_APP, validate_profile, WDA
 
 
 class InstallationSafety(unittest.TestCase):
@@ -56,6 +56,9 @@ class InstallationSafety(unittest.TestCase):
         for team in ("", "W1234567890", "../foo", "abcde12345"):
             with self.subTest(team=team), self.assertRaises(ValueError):
                 self.check_profile(team=team)
+
+    def test_install_has_a_bounded_device_service_wait(self):
+        self.assertEqual(INSTALL_TIMEOUT_SECONDS, 300)
 
     def test_reject_expired_wrong_team_device_and_distribution(self):
         variants = [

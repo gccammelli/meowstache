@@ -3,6 +3,12 @@
 set -euo pipefail
 
 project_dir=$(cd "$(dirname "$0")/../.." && pwd)
+[[ $# -le 1 ]] || { echo "Usage: $0 [meowstache|pandy|liberpet]" >&2; exit 2; }
+app=${1:-meowstache}
+[[ $app == meowstache || $app == pandy || $app == liberpet ]] || {
+  echo "Usage: $0 [meowstache|pandy|liberpet]" >&2
+  exit 2
+}
 private="${IOS_PRIVATE_DIR:-$HOME/secrets/max/apple}"
 runtime="$project_dir/build/ios-private"
 appium="$project_dir/build/ios-tools/node/node_modules/.bin/appium"
@@ -63,4 +69,4 @@ done
 curl --silent --fail http://127.0.0.1:4723/status >/dev/null ||
   { echo "Appium did not become ready"; exit 1; }
 
-"$python" "$project_dir/tools/ios/smoke.py"
+"$python" "$project_dir/tools/ios/smoke.py" "$app"

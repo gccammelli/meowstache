@@ -1,14 +1,14 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from install import TEST_APP
-from smoke import Driver
+from smoke import APPS, Driver
 
 
 class ForegroundGuard(unittest.TestCase):
-    def driver(self, bundle):
-        driver = Driver()
+    def driver(self, bundle, expected):
+        driver = Driver(expected)
         calls = []
         def request(method, route, data=None):
             calls.append(route)
@@ -19,19 +19,43 @@ class ForegroundGuard(unittest.TestCase):
         return driver, calls
 
     def test_refuse_personal_screens(self):
-        for bundle in ("com.apple.springboard", TEST_APP.removesuffix(".testbed"), None):
-            driver, calls = self.driver(bundle)
-            with self.subTest(bundle=bundle), tempfile.TemporaryDirectory() as directory:
-                with self.assertRaises(RuntimeError):
-                    driver.capture(Path(directory), "screen")
-                with self.assertRaises(RuntimeError):
-                    driver.find("Pets", timeout=0.1)
-                self.assertEqual(list(Path(directory).iterdir()), [])
-                self.assertTrue(all(route == "/execute/sync" for route in calls))
+        for name, (expected, _exercise) in APPS.items():
+            for bundle in ("com.apple.springboard", expected.removesuffix(".testbed"), None):
+                driver, calls = self.driver(bundle, expected)
+                with self.subTest(app=name, bundle=bundle), tempfile.TemporaryDirectory() as directory:
+                    with self.assertRaises(RuntimeError):
+                        driver.capture(Path(directory), "screen")
+                    with self.assertRaises(RuntimeError):
+                        driver.find("Pets", timeout=0.1)
+                    self.assertEqual(list(Path(directory).iterdir()), [])
+                    self.assertTrue(all(route == "/execute/sync" for route in calls))
 
-    def test_test_app_is_allowed(self):
-        driver, _calls = self.driver(TEST_APP)
-        driver.foreground()
+    def test_only_mapped_test_apps_are_allowed(self):
+        self.assertEqual(set(APPS), {"meowstache", "pandy", "liberpet"})
+        for name, (bundle, exercise) in APPS.items():
+            with self.subTest(app=name):
+                self.assertTrue(bundle.endswith(".testbed"))
+                self.assertTrue(callable(exercise))
+                driver, _calls = self.driver(bundle, bundle)
+                driver.foreground()
+                wrong = next(other for other, _exercise in APPS.values() if other != bundle)
+                driver, _calls = self.driver(wrong, bundle)
+                with self.assertRaises(RuntimeError):
+                    driver.foreground()
+
+    def test_gate_rejects_extra_or_unknown_arguments(self):
+        gate = Path(__file__).with_name("x1-smoke-gate.sh")
+        for args in (["unknown"], ["meowstache", "extra"]):
+            result = subprocess.run(["bash", gate, *args], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("Usage:", result.stderr)
+
+    def test_launch_waits_for_the_selected_test_app(self):
+        bundle = APPS["pandy"][0]
+        driver = Driver(bundle)
+        foreground = iter(["com.apple.springboard", bundle])
+        driver.execute = lambda _script, _args: {"bundleId": next(foreground)}
+        driver.wait_foreground(timeout=1)
 
 
 if __name__ == "__main__":
