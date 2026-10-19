@@ -36,7 +36,7 @@ cleanup() {
     wait "$appium_pid" 2>/dev/null || true
   fi
   if [[ -n "$tunnel_pid" ]]; then
-    sudo -n kill "$tunnel_pid" 2>/dev/null || true
+    sudo -n kill -- "-$tunnel_pid" 2>/dev/null || true
   fi
   if [[ -n "$tunnel_launcher_pid" ]]; then
     wait "$tunnel_launcher_pid" 2>/dev/null || true
@@ -47,7 +47,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 sudo -n rm -f "$root_port" "$tunnel_pid_file"
-sudo -n sh -c 'echo "$$" > "$1"; exec env APPIUM_HOME="$2" "$3" driver run xcuitest tunnel-creation' \
+sudo -n setsid --fork --wait sh -c \
+  'echo "$$" > "$1"; exec env APPIUM_HOME="$2" "$3" driver run xcuitest tunnel-creation' \
   sh "$tunnel_pid_file" "$project_dir/build/ios-tools/appium" "$appium" \
   >"$runtime/tunnel.log" 2>&1 &
 tunnel_launcher_pid=$!
@@ -70,7 +71,7 @@ registry_port=$(cat "$user_port")
 for _ in {1..45}; do
   curl --silent --fail "http://127.0.0.1:$registry_port/remotexpc/tunnels" |
     jq --exit-status '.tunnels | length > 0' >/dev/null 2>&1 && break
-  sudo -n kill -0 "$tunnel_pid" 2>/dev/null || { echo "RemoteXPC tunnel stopped during setup"; exit 1; }
+  sudo -n kill -0 -- "-$tunnel_pid" 2>/dev/null || { echo "RemoteXPC tunnel stopped during setup"; exit 1; }
   sleep 1
 done
 curl --silent --fail "http://127.0.0.1:$registry_port/remotexpc/tunnels" |
