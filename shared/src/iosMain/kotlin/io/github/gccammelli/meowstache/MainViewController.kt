@@ -22,6 +22,11 @@ import androidx.compose.ui.window.ComposeUIViewController
 import io.github.gccammelli.meowstache.ui.AppTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.AVQueuePlayer
+import platform.AVFoundation.play
+import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSBundle
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -105,6 +110,17 @@ private class IosPlatformUi : PlatformUi {
 
     override fun toast(message: String) { toastMessage.value = message }
 
+    /** iOS's own full-screen player, opened at once; the parts of a split visit play back to back (Safari only plays one). */
+    override fun playVideo(load: suspend () -> List<String>) {
+        val vc = AVPlayerViewController()
+        top()?.presentViewController(vc, true, null) ?: return
+        kotlinx.coroutines.MainScope().launch {
+            runCatching { load().map { AVPlayerItem(uRL = NSURL.URLWithString(it)!!) } }
+                .onSuccess { items -> vc.player = AVQueuePlayer(items = items).apply { play() } }
+                .onFailure { vc.dismissViewControllerAnimated(true, null); toast("Couldn't open the video: ${it.message}") }
+        }
+    }
+
     private fun tempFile(name: String, text: String): NSURL {
         val path = NSTemporaryDirectory() + name
         NSString.create(string = text).writeToFile(path, true, NSUTF8StringEncoding, null)
@@ -151,9 +167,10 @@ private class IosPlatformUi : PlatformUi {
 
     override fun notifyNew(alerts: List<PetAlert>) {
         for (a in Repo.takeFresh(alerts)) {
+            if (a.update) continue // shortcut: iOS doesn't rewrite a delivered notification yet; the first one stands
             val content = UNMutableNotificationContent().apply { setTitle(a.title); setBody(a.body) }
             UNUserNotificationCenter.currentNotificationCenter()
-                .addNotificationRequest(UNNotificationRequest.requestWithIdentifier(a.key, content, null), null)
+                .addNotificationRequest(UNNotificationRequest.requestWithIdentifier(a.slot, content, null), null)
         }
     }
 }

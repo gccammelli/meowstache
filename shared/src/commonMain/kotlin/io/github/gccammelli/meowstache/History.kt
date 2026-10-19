@@ -228,11 +228,14 @@ fun robotAlerts(now: Long, r: RobotSnapshot, t: RobotTopics, zone: ZoneId = Zone
         if (t.drawerFull) ev("DFIFullFlagOn", "drawer", "Waste drawer full", "$n's waste drawer is full. Empty it so cleaning cycles keep running.")
         if (t.cycleComplete) ev("robotCycleStatusIdle", "cycle", "Clean cycle complete", "$n finished a clean cycle.")
         if (t.cycleInterrupted) ev("robotCycleStateCatDetect", "interrupted", "Clean cycle interrupted", "$n paused a clean cycle because a cat was detected.")
-        // One summary per visit, once its length is known (the next clean cycle), or after 30 minutes without it.
-        if (t.visits) r.visits.filter { now - it.ts in 0 until 6 * 3_600_000L && (it.minutes != null || now - it.ts > 30 * 60_000L) }.forEach { v ->
+        // One summary per visit, as soon as the cat is weighed. Its length is only known at the next clean cycle
+        // (after the robot's cycle delay), so it's added then by quietly updating the same notification.
+        if (t.visits) r.visits.filter { now - it.ts in 0 until 6 * 3_600_000L }.forEach { v ->
             val at = Instant.ofEpochMilli(v.ts).atZone(zone).toLocalTime()
-            out += PetAlert("robot:visit:${r.serial}:${v.ts}", "", "${v.pet ?: "A cat"} visited $n",
-                listOfNotNull(v.weight, v.minutes?.let(::minSec), "at %02d:%02d".format(at.hour, at.minute)).joinToString(" · "))
+            val key = "robot:visit:${r.serial}:${v.ts}"
+            fun body(minutes: Double?) = listOfNotNull(v.weight, minutes?.let(::minSec), "at %02d:%02d".format(at.hour, at.minute)).joinToString(" · ")
+            out += PetAlert(key, "", "${v.pet ?: "A cat"} visited $n", body(null))
+            if (v.minutes != null) out += PetAlert("$key:length", "", "${v.pet ?: "A cat"} visited $n", body(v.minutes), slot = key, update = true)
         }
         if (t.lowLitter && r.litterState in setOf("LOW", "EMPTY", "REFILL"))
             out += PetAlert("robot:litter:${r.serial}:${now.localDate(zone)}", "", "Low litter", "$n is low on litter. Top it up to the fill line.")
@@ -273,7 +276,18 @@ fun applyWeightOverrides(history: Map<String, List<Reading>>, overrides: Map<Lon
     return out.mapValues { (_, l) -> l.sortedBy { it.ts } }
 }
 
-data class PetAlert(val key: String, val petId: String, val title: String, val body: String)
+/**
+ * One notification. [slot] is the notification it shows as (normally its own key); an [update] quietly rewrites the
+ * notification already posted in that slot, if it's still showing, rather than buzzing again.
+ */
+/** New alerts to post: an update whose original is new too (the phone was offline meanwhile) goes out instead of it, as a normal notification. */
+fun mergeUpdates(fresh: List<PetAlert>): List<PetAlert> {
+    val updated = fresh.filter { it.update }.map { it.slot }.toSet()
+    val newSlots = fresh.filter { !it.update }.map { it.slot }.toSet()
+    return fresh.filter { it.update || it.slot !in updated }.map { if (it.update && it.slot in newSlots) it.copy(update = false) else it }
+}
+
+data class PetAlert(val key: String, val petId: String, val title: String, val body: String, val slot: String = key, val update: Boolean = false)
 
 /**
  * Pure alert rules; the worker dedupes on [PetAlert.key] so each condition fires once.

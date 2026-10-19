@@ -1,5 +1,6 @@
 package io.github.gccammelli.meowstache
 
+import io.github.gccammelli.meowstache.ui.UnavailableDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,9 +78,13 @@ fun Root() {
     Box(Modifier.fillMaxSize().background(W.Bg)) {
         if (splash) Splash() else {
             val nav = rememberNavController()
-            val start = if (!Repo.introAccepted) "intro" else if (Repo.signedIn) "main" else "welcome"
+            UnavailableDialog() // "only in Whisker's app", for any screen
+            // New installs pick cloud or local first; existing installs (intro already accepted) stay on cloud.
+            val start = if (!Repo.introAccepted) (if (Repo.modeChosen) "intro" else "mode") else if (Repo.signedIn) "main" else "welcome"
             NavHost(nav, start) {
+                composable("mode") { ModeChoice(nav) }
                 composable("intro") { Intro(nav) }
+                composable("haLogin") { HaLogin(nav) }
                 composable("welcome") { Welcome(nav) }
                 composable("login") { Login(nav) }
                 composable("main") { MainScreen(nav) }
@@ -122,7 +127,9 @@ private fun Intro(nav: androidx.navigation.NavHostController) {
         Text("Before you start", color = W.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp, bottom = 20.dp))
         listOf(
             "Meowstache helps you take back control of your Litter-Robot data: full history, kept on your phone, and the alerts that matter for your cat's health.",
-            "It doesn't replace the official Whisker app in any way. Setup, new devices and some settings still need it.",
+            if (Repo.localMode) "Local mode talks only to your own Home Assistant, for robots running the community ESPHome firmware. Nothing goes through Whisker's servers. " +
+                "It's a separate project by other people: Meowstache only uses what it shares with Home Assistant."
+            else "It doesn't replace the official Whisker app in any way. Setup, new devices and some settings still need it.",
             "It was built from the ground up as a nudge for Whisker to step off the path of enshittification.",
         ).forEach { Text(it, color = W.Text, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)) }
         Text("Meowstache is an independent project, not affiliated with or endorsed by Whisker. It is provided \"as is\", without warranty of any kind. " +
@@ -148,14 +155,22 @@ private fun Welcome(nav: NavHostController) {
         Spacer(Modifier.weight(1f))
         Brand()
         Spacer(Modifier.weight(1f))
-        Pill("Register", { ctx.openUrl(Repo.storeUrl("customer/account/create/")) }, Modifier.fillMaxWidth(), filled = true)
-        Spacer(Modifier.height(18.dp))
-        Pill("Login", { nav.navigate("login") }, Modifier.fillMaxWidth())
-        Spacer(Modifier.height(60.dp))
+        if (Repo.localMode) {
+            Pill("Connect Home Assistant", { nav.navigate("haLogin") }, Modifier.fillMaxWidth(), filled = true)
+            Spacer(Modifier.height(60.dp))
+        } else {
+            Pill("Register", { ctx.openUrl(Repo.storeUrl("customer/account/create/")) }, Modifier.fillMaxWidth(), filled = true)
+            Spacer(Modifier.height(18.dp))
+            Pill("Login", { nav.navigate("login") }, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(60.dp))
+        }
         Pill("Try the demo", { Repo.startDemo(); nav.navigate("main") { popUpTo(0) } }, Modifier.fillMaxWidth())
-        Text("No account needed: a made-up robot and cats with a year of history.", color = W.Text2, fontSize = 12.sp,
+        Text(if (Repo.localMode) "No Home Assistant needed: two made-up robots on the ESPHome firmware, with cats and a year of history."
+            else "No account needed: a made-up robot and cats with a year of history.", color = W.Text2, fontSize = 12.sp,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
-        Spacer(Modifier.height(80.dp))
+        Text(if (Repo.localMode) "Use the Whisker cloud instead" else "Robot on the ESPHome firmware? Connect locally", color = W.Accent, fontSize = 13.sp,
+            modifier = Modifier.padding(top = 28.dp).clickable { Repo.setMode(!Repo.localMode); nav.navigate("welcome") { popUpTo(0) } })
+        Spacer(Modifier.height(40.dp))
     }
 }
 
@@ -204,5 +219,79 @@ private fun Login(nav: NavHostController) {
             color = W.Text2, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp))
         Text("Forgot password?", color = W.Text2, fontSize = 13.sp,
             modifier = Modifier.padding(top = 20.dp).clickable { ctx.openUrl(Repo.storeUrl("customer/account/forgotpassword/")) })
+    }
+}
+
+/** The very first screen: which way the robots are reached. Cloud is the default and how every robot ships. */
+@Composable
+private fun ModeChoice(nav: NavHostController) {
+    val ctx = LocalPlatform.current
+    Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Logo(72.dp)
+        Text("How do you connect?", color = W.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp, bottom = 24.dp))
+        @Composable
+        fun option(title: String, badge: String?, body: String, local: Boolean) = io.github.gccammelli.meowstache.ui.WCard(
+            Modifier.fillMaxWidth().padding(bottom = 16.dp), onClick = { Repo.setMode(local); nav.navigate("intro") },
+        ) {
+            Text(title, color = W.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            badge?.let { Text(it, color = W.Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 2.dp)) }
+            Text(body, color = W.Text2, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+        option("Whisker cloud", "Default", "Sign in with your Litter-Robot account. Works with the Litter-Robot 4 as it comes from the factory.", false)
+        option("Local: Home Assistant", "No cloud", "For robots running the community ESPHome firmware: Meowstache reads them through your own " +
+            "Home Assistant, on your network. Works with any model the firmware supports.", true)
+        Text("About the ESPHome firmware", color = W.Accent, fontSize = 13.sp,
+            modifier = Modifier.padding(top = 8.dp).clickable { ctx.openUrl(ESPHOME_FIRMWARE_URL) })
+        Text("You can switch later from the sign-in screen.", color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(top = 24.dp))
+    }
+}
+
+/** Local mode's sign-in: Home Assistant's address and a long-lived access token. */
+@Composable
+private fun HaLogin(nav: NavHostController) {
+    var url by remember { mutableStateOf("http://homeassistant.local:8123") }
+    var token by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val ctx = LocalPlatform.current
+    val colors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = W.Accent, unfocusedBorderColor = W.Muted, focusedLabelColor = W.Accent,
+        cursorColor = W.Accent, focusedTextColor = W.Text, unfocusedTextColor = W.Text,
+    )
+    Column(
+        Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Brand(84)
+        Spacer(Modifier.height(40.dp))
+        OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("Home Assistant address") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), colors = colors)
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth(), label = { Text("Long-lived access token") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), colors = colors)
+        error?.let { Text(it, color = W.Red, modifier = Modifier.padding(top = 12.dp)) }
+        Spacer(Modifier.height(28.dp))
+        if (busy) CircularProgressIndicator(color = W.Accent)
+        else Pill("Connect", {
+            busy = true; error = null
+            scope.launch {
+                try {
+                    val n = Repo.connectHa(url, token)
+                    if (n == 0) ctx.toast("Connected, but no Litter-Robot on the ESPHome firmware was found")
+                    ctx.scheduleAlerts()
+                    Repo.refreshAsync()
+                    nav.navigate("main") { popUpTo(0) }
+                } catch (e: Exception) {
+                    error = e.message ?: "Couldn't connect"
+                } finally { busy = false }
+            }
+        }, Modifier.fillMaxWidth(), filled = true, enabled = token.isNotBlank())
+        Text("Create a token in Home Assistant under your profile › Security › Long-lived access tokens. It stays on this phone (encrypted) " +
+            "and is only sent to your Home Assistant (use https:// when connecting from outside your home). Cats come from the firmware's cat tracker: enable the \"Cat N\" entities and rename them to your cats' names.",
+            color = W.Text2, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp))
+        Text("Firmware setup guide", color = W.Accent, fontSize = 13.sp,
+            modifier = Modifier.padding(top = 20.dp).clickable { ctx.openUrl("$ESPHOME_FIRMWARE_URL/src/branch/main/docs/Litter%20Robot%204/User%20Guide.md") })
     }
 }

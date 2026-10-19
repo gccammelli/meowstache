@@ -1,5 +1,8 @@
 package io.github.gccammelli.meowstache.ui
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.VisibilityOff
 import io.github.gccammelli.meowstache.*
 import kotlinx.datetime.LocalDate
 
@@ -9,6 +12,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -138,6 +144,8 @@ fun AccountScreen(nav: NavHostController) {
     val s = state(); val ctx = LocalPlatform.current
     var login by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
+    var diag by remember { mutableStateOf(false) }
+    var videos by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun toast(t: String) = ctx.toast(t)
     Screen({ BackTopBar("Account", { nav.popBackStack() }) }) {
@@ -151,13 +159,13 @@ fun AccountScreen(nav: NavHostController) {
                     Chevron()
                 }
             }
-            Group("Account", W.Accent) {
+            if (!Repo.localMode) Group("Account", W.Accent) {
                 ListRow("Login Information", null, { login = true }, icon = Icons.Filled.AccountBox)
                 ListRow("Addresses", null, { ctx.openUrl(Repo.storeUrl("customer/address/")) }, icon = Icons.Filled.Home, divider = true)
                 ListRow("Payment Methods", null, { ctx.openUrl(Repo.storeUrl("vault/cards/listaction/")) }, icon = Icons.Filled.CreditCard, divider = true)
                 ListRow("Referral Dashboard", null, { ctx.openUrl("https://www.whisker.com/share") }, icon = Icons.Filled.Groups, divider = true)
             }
-            Group("Orders & Subscriptions", W.Green) {
+            if (!Repo.localMode) Group("Orders & Subscriptions", W.Green) {
                 ListRow("Orders", null, { ctx.openUrl(Repo.storeUrl("sales/order/history/")) }, icon = Icons.Filled.LocalShipping)
                 ListRow("Subscriptions", null, { ctx.openUrl(Repo.storeUrl("customer/subscriptions/")) }, icon = Icons.Filled.Autorenew, divider = true)
                 ListRow("Returns", null, { ctx.openUrl(Repo.storeUrl("returns")) }, icon = Icons.AutoMirrored.Filled.AssignmentReturn, divider = true)
@@ -172,6 +180,10 @@ fun AccountScreen(nav: NavHostController) {
                 ListRow("Back up history", "Save every weighing and setting to a file", {
                     ctx.saveFile("meowstache-${LocalDate.now()}.json", Repo.exportBackup()) { e -> toast(if (e == null) "History backed up" else "Backup failed: ${e.message}") }
                 }, icon = Icons.Filled.Backup, divider = true)
+                if (!Repo.demo) ListRow("Visit Videos", Repo.clipsFolder?.let { "Home Assistant media › $it" } ?: "A camera clip for each visit, from Home Assistant", { videos = true },
+                    icon = Icons.Filled.Videocam, divider = true)
+                if (Repo.localMode) ListRow("Home Assistant diagnostics", "Save what Meowstache sees, to send with a bug report", { diag = true },
+                    icon = Icons.Filled.BugReport, divider = true)
                 ListRow("Restore history", "Merge a backup file into this phone", {
                     ctx.openFile { r ->
                         r ?: return@openFile
@@ -189,6 +201,27 @@ fun AccountScreen(nav: NavHostController) {
                     Switch(Repo.showBlogs.collectAsState().value, Repo::setShowBlogs, colors = SwitchDefaults.colors(checkedTrackColor = W.Blue, checkedThumbColor = Color.White,
                         uncheckedTrackColor = Color(0xFFDDDDDD), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent))
                 }
+                HorizontalDivider(color = W.Line, thickness = 1.dp)
+                var unavailableInfo by remember { mutableStateOf(false) }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.VisibilityOff, null, tint = W.Icon, modifier = Modifier.padding(end = 16.dp).size(24.dp))
+                    Text("Show unavailable features", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Outlined.Info, "Info", tint = W.Accent, modifier = Modifier.padding(start = 8.dp).size(20.dp).clickable { unavailableInfo = true })
+                    Spacer(Modifier.weight(1f))
+                    Switch(unavailableShown(), Repo::setShowUnavailable, colors = SwitchDefaults.colors(checkedTrackColor = W.Blue, checkedThumbColor = Color.White,
+                        uncheckedTrackColor = Color(0xFFDDDDDD), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent))
+                }
+                if (unavailableInfo) AlertDialog(
+                    onDismissRequest = { unavailableInfo = false },
+                    containerColor = W.Card,
+                    title = { Text("Unavailable features", color = W.Text) },
+                    text = { Text("$APP_NAME can't fully replace Whisker's app: Whisker's cloud only lets other apps do some things, so features like " +
+                        "the sleep schedule, network setup or factory reset stay in the official app. They're shown greyed out as \"not available\", " +
+                        "or hidden with this switch.\n\nFor full control without Whisker's cloud, the community ESPHome firmware runs the robot through " +
+                        "your own Home Assistant, and $APP_NAME's local mode can then do everything.", color = W.Text2) },
+                    confirmButton = { TextButton(onClick = { unavailableInfo = false }) { Text("OK", color = W.Accent) } },
+                    dismissButton = { TextButton(onClick = { ctx.openUrl("https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot") }) { Text("About the firmware", color = W.Accent) } },
+                )
             }
             Group("Support", W.Red) {
                 ListRow("Meowstache Privacy", "What this app stores and sends", { privacy = true }, icon = Icons.Filled.PrivacyTip)
@@ -208,14 +241,35 @@ fun AccountScreen(nav: NavHostController) {
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
         }
     }
-    if (privacy) ConfirmDialog("Meowstache Privacy",
+    if (videos) VideosDialog { videos = false }
+    if (diag) ConfirmDialog("Home Assistant diagnostics",
+        "Saves a file with what Meowstache reads from Home Assistant about your robots: their entities, current values and the last day of history, " +
+            "plus how the app understood them. It includes robot and cat names and weights, but not your token or Home Assistant's address. " +
+            "Send it with a bug report (meowstache.app@gmail.com or GitHub) so we can see what your firmware reports.",
+        "Save file", {
+            val version = ctx.appVersion
+            Repo.launch {
+                runCatching { Repo.haDiagnostics(version) }.fold(
+                    { text -> ctx.saveFile("meowstache-ha-diagnostics-${LocalDate.now()}.json", text) { e -> toast(if (e == null) "Diagnostics saved" else "Couldn't save: ${e.message}") } },
+                    { toast("Couldn't read Home Assistant: ${it.message}") })
+            }
+        }, { diag = false })
+    if (privacy && Repo.localMode) ConfirmDialog("Meowstache Privacy",
+        "• Local mode only talks to your own Home Assistant, at the address you entered. Nothing is sent to the Litter-Robot servers.\n" +
+        "• The access token is kept on this phone, encrypted with a key in the phone's secure hardware, and never backed up.\n" +
+        "• Your robot and pet history is stored only on this phone (and in Android's own backup, if you use it).\n" +
+        "• No analytics, no ads, no other servers.",
+        "ESPHome firmware", { ctx.openUrl(io.github.gccammelli.meowstache.ESPHOME_FIRMWARE_URL) }, { privacy = false }, dismiss = "Close")
+    else if (privacy) ConfirmDialog("Meowstache Privacy",
         "• Your password goes straight to the Litter-Robot login server over HTTPS and is never stored.\n" +
         "• A login token is kept on this phone, encrypted with a key in the phone's secure hardware, and never backed up.\n" +
         "• Your robot and pet history is stored only on this phone (and in Android's own backup, if you use it).\n" +
         "• The app only talks to the Litter-Robot servers. No analytics, no ads, no other servers.\n\n" +
         "Your data on the Litter-Robot servers is covered by the manufacturer's own privacy policy.",
         "Manufacturer's policy", { ctx.openUrl("https://www.litter-robot.com/legal.html#privacypolicy") }, { privacy = false }, dismiss = "Close")
-    if (login) ConfirmDialog("Login Information", "Signed in as ${Repo.email()}.\n\nYour email and password belong to your Litter-Robot account. You can change the password on the manufacturer's website.",
+    if (login && Repo.localMode) InfoDialog("Home Assistant", "Connected to ${Repo.email()}.\n\n" +
+        "To disconnect for good, log out here and delete the Meowstache token in Home Assistant (your profile › Security).") { login = false }
+    else if (login) ConfirmDialog("Login Information", "Signed in as ${Repo.email()}.\n\nYour email and password belong to your Litter-Robot account. You can change the password on the manufacturer's website.",
         "Change password", { ctx.openUrl(Repo.storeUrl("customer/account/forgotpassword/")) }, { login = false })
 }
 
@@ -343,7 +397,8 @@ fun UnitsScreen(nav: NavHostController) = Screen({ BackTopBar("Measurement Units
 
 @Composable
 private fun Toggle(label: String, checked: Boolean, enabled: Boolean = true, info: (() -> Unit)? = null, na: Boolean = false, onChange: (Boolean) -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    if (na && !unavailableShown()) return
+    Row(Modifier.fillMaxWidth().let { if (na) it.clickable { askUnavailable(label) } else it }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(label, color = if (enabled) W.Text else W.Muted, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -383,7 +438,7 @@ fun NotificationsScreen(nav: NavHostController) {
             WCard(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Device:", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(s.robots.firstOrNull()?.let { "Litter-Robot 4" } ?: "—", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    Text(s.robots.firstOrNull()?.model ?: "—", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(start = 10.dp).clip(RoundedCornerShape(50)).background(W.pick(0xFF262626, 0xFFF1F1F1)).padding(horizontal = 16.dp, vertical = 8.dp))
                 }
                 Text("Receive push notifications about your Litter-Robot 4. Select the topics you want to be informed about.",
@@ -400,7 +455,7 @@ fun NotificationsScreen(nav: NavHostController) {
                     Toggle("Clean Cycle Complete", t.cycleComplete, enabled = t.usage) { v -> topics { it.copy(cycleComplete = v) } }
                     Toggle("Clean Cycle Interrupted", t.cycleInterrupted, enabled = t.usage) { v -> topics { it.copy(cycleInterrupted = v) } }
                     Toggle("Cat Visit Summary", t.visits, enabled = t.usage,
-                        info = { info = "Cat Visit Summary" to "After each visit, once the cat has left: which cat, its weight and how long it stayed. The robot doesn't log when a cat leaves, so $APP_NAME works it out from the clean cycle that follows its wait timer." }) { v -> topics { it.copy(visits = v) } }
+                        info = { info = "Cat Visit Summary" to "As soon as the cat is weighed: which cat and its weight. How long it stayed is added to the same notification once the clean cycle starts: the robot doesn't log when a cat leaves, so $APP_NAME works it out from that cycle and its wait timer." }) { v -> topics { it.copy(visits = v) } }
                     Toggle("Maintenance Tips", t.maintenance, enabled = t.usage) { v -> topics { it.copy(maintenance = v) } }
                     Toggle("Cat Detected In Drawer", false, enabled = false, na = true)
                     Toggle("Hopper Enabled", false, enabled = false, na = true)
@@ -408,18 +463,20 @@ fun NotificationsScreen(nav: NavHostController) {
                 Toggle("Errors", t.errors, info = { info = "Errors" to "Robot faults from the activity log (bonnet removed, cat sensor or globe motor fault, battery backup) and the robot going offline for 1 or 24 hours." }) { v -> topics { it.copy(errors = v) } }
                 Toggle("Software Updates", t.updates, info = { info = "Software Updates" to "Tells you when newer firmware is published for your robot. The robot installs updates by itself." }) { v -> topics { it.copy(updates = v) } }
                 var instant by remember { mutableStateOf(Repo.instantNotifications) }
-                if (ctx.canInstantNotifications && !Repo.demo) Toggle("Instant Notifications", instant,
+                if (ctx.canInstantNotifications && !Repo.demo && !Repo.localMode) Toggle("Instant Notifications", instant,
                     info = { info = "Instant Notifications" to "Keeps a live connection to your robot, the same live updates Home Assistant uses, so " +
                         "notifications arrive within seconds instead of every 30 minutes. Gentle on Whisker's servers: one connection, and at most one " +
-                        "check every 2 minutes. Android requires a silent notification while it's on; swipe it away to hide it, and instant notifications keep working. A visit summary still waits for the clean cycle." }) { v ->
+                        "check every 2 minutes. Android requires a silent notification while it's on; swipe it away to hide it, and instant notifications keep working." }) { v ->
                     instant = v; Repo.setInstantNotifications(v); ctx.syncInstantNotifications()
                 }
-                Text(if (instant && ctx.canInstantNotifications) "Checked by $APP_NAME on this phone as soon as your robot changes, not pushed by the manufacturer."
+                Text(if (instant && ctx.canInstantNotifications && !Repo.localMode) "Checked by $APP_NAME on this phone as soon as your robot changes, not pushed by the manufacturer."
                     else "Checked by $APP_NAME on this phone every 30 minutes, not pushed by the manufacturer.", color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
             info?.let { (title, text) -> InfoDialog(title, text) { info = null } }
             Spacer(Modifier.height(14.dp))
-            WCard(Modifier.fillMaxWidth()) { Text("LitterHopper", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); NotAvailable() }
+            if (unavailableShown()) WCard(Modifier.fillMaxWidth(), onClick = { askUnavailable("LitterHopper notifications") }) {
+                Text("LitterHopper", color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); NotAvailable()
+            }
 
             // ---- Meowstache's own alerts, checked on this phone every 30 minutes ----
             Spacer(Modifier.height(14.dp))
@@ -516,6 +573,65 @@ private fun TargetDialog(name: String, startLbs: Double?, isSet: Boolean, onSave
         dismissButton = {
             androidx.compose.material3.TextButton(onClick = { if (isSet) onSave(null); onDismiss() }) {
                 Text(if (isSet) "Turn off" else "Cancel", color = W.Text2)
+            }
+        },
+    )
+}
+
+/** Visit videos (GitHub #3): which Home Assistant media folder holds the clips; Whisker mode also needs the address and a token. */
+@Composable
+private fun VideosDialog(onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current; val scope = rememberCoroutineScope()
+    var folder by remember { mutableStateOf(Repo.clipsFolder ?: "meowstache") }
+    var url by remember { mutableStateOf("http://homeassistant.local:8123") }
+    var token by remember { mutableStateOf("") }
+    var away by remember { mutableStateOf(Repo.clipsAwayUrl.orEmpty()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val cloud = !Repo.localMode
+    val colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = W.Accent, unfocusedBorderColor = W.Muted, focusedLabelColor = W.Accent,
+        cursorColor = W.Accent, focusedTextColor = W.Text, unfocusedTextColor = W.Text,
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss, containerColor = W.Card,
+        title = { Text("Visit Videos", color = W.Text) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("A Home Assistant automation saves a clip when a cat shows up; $APP_NAME adds a play button to that visit. " +
+                    "Works with any camera in Home Assistant, Ring included.", color = W.Text2, fontSize = 13.sp)
+                Text("Setup guide", color = W.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp).clickable { ctx.openUrl("https://github.com/gccammelli/meowstache/blob/main/docs/visit-videos.md") })
+                if (cloud) {
+                    androidx.compose.material3.OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth().padding(top = 12.dp),
+                        label = { Text("Home Assistant address") }, singleLine = true, colors = colors)
+                    androidx.compose.material3.OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
+                        label = { Text("Long-lived access token") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), colors = colors)
+                }
+                androidx.compose.material3.OutlinedTextField(folder, { folder = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("Media folder") }, singleLine = true, colors = colors)
+                androidx.compose.material3.OutlinedTextField(away, { away = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("Away address (optional)") }, placeholder = { Text("https://….ui.nabu.casa") }, singleLine = true, colors = colors)
+                Text("For videos away from home: Home Assistant's remote address. The home address is tried first.",
+                    color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                error?.let { Text(it, color = W.Red, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = !busy && folder.isNotBlank() && (!cloud || token.isNotBlank()), onClick = {
+                busy = true; error = null
+                scope.launch {
+                    runCatching { Repo.setVideos(folder, url, token, away) }
+                        .onSuccess { ctx.toast(if (it == 0) "Connected · no videos yet: they'll appear after the next visit" else "Connected · $it video${if (it == 1) "" else "s"} found"); onDismiss() }
+                        .onFailure { error = it.message ?: "Couldn't connect" }
+                    busy = false
+                }
+            }) { Text(if (busy) "Checking…" else "Save", color = W.Accent) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = { if (Repo.clipsFolder != null) Repo.videosOff(); onDismiss() }) {
+                Text(if (Repo.clipsFolder != null) "Turn off" else "Cancel", color = W.Text2)
             }
         },
     )

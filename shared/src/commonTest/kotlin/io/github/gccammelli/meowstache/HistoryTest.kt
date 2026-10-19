@@ -179,15 +179,20 @@ class HistoryTest {
         val now = 1_800_000_000_000L
         val min = 60_000L
         val snap = RobotSnapshot("S1", "Robbie", true, now, "OPTIMAL", null, emptyList(), visits = listOf(
-            VisitNote(now - 10 * min, "Mochi", "5.0 kg", 5.3),   // length known: announce
-            VisitNote(now - 5 * min, "Luna", "3.7 kg", null),     // still waiting for the cycle
-            VisitNote(now - 40 * min, null, "4.1 kg", null),      // no length after 30 min: announce anyway
+            VisitNote(now - 10 * min, "Mochi", "5.0 kg", 5.3),   // length known: the notice, then its update
+            VisitNote(now - 5 * min, "Luna", "3.7 kg", null),     // just weighed: announced right away, no length yet
             VisitNote(now - 7 * 60 * min, "Mochi", "5.0 kg", 4.0), // older than 6 h: ignored
         ))
         val on = robotAlerts(now, snap, RobotTopics(usage = true, visits = true), ZoneId.of("UTC"))
-        assertEquals(listOf("Mochi visited Robbie", "A cat visited Robbie"), on.map { it.title })
-        assertEquals("5.0 kg · 5m 18s · at 07:50", on[0].body) // now - 10 min = 2027-01-15 07:50 UTC
-        assertEquals("robot:visit:S1:${now - 10 * min}", on[0].key) // stable key: the worker sends it once
+        assertEquals(listOf("Mochi visited Robbie", "Mochi visited Robbie", "Luna visited Robbie"), on.map { it.title })
+        val k = "robot:visit:S1:${now - 10 * min}" // stable keys: the worker sends each once
+        assertEquals(PetAlert(k, "", "Mochi visited Robbie", "5.0 kg · at 07:50"), on[0]) // now - 10 min = 2027-01-15 07:50 UTC
+        assertEquals(PetAlert("$k:length", "", "Mochi visited Robbie", "5.0 kg · 5m 18s · at 07:50", slot = k, update = true), on[1])
+        assertEquals("3.7 kg · at 07:55", on[2].body)
+        // Both new at once (offline meanwhile): only the complete one, as a normal notification in the visit's slot.
+        assertEquals(listOf(on[1].copy(update = false), on[2]), mergeUpdates(on))
+        // The notice already went out: the length arrives as a quiet update.
+        assertEquals(listOf(on[1]), mergeUpdates(listOf(on[1])))
         assertEquals(emptyList(), robotAlerts(now, snap, RobotTopics(usage = true, visits = false), ZoneId.of("UTC")).filter { "visited" in it.title })
     }
 

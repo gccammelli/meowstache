@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -51,6 +53,97 @@ class MainActivity : ComponentActivity(), PlatformUi {
     override val buildNumber get() = BuildConfig.VERSION_CODE
 
     override fun openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    /**
+     * In-app, with Media3's player: it starts after a short buffer (Android's own VideoView buffered for ages before
+     * starting), and the phone's default video app may want storage access just to stream (MX Player does). It opens at
+     * once with "Loading video…" while Home Assistant signs the link and the first seconds arrive.
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    override fun playVideo(load: suspend () -> List<String>) {
+        val player = androidx.media3.exoplayer.ExoPlayer.Builder(this)
+            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(2_000, 30_000, 500, 1_000).build())
+            .build()
+        val view = androidx.media3.ui.PlayerView(this).apply {
+            this.player = player
+            setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+        val loading = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            addView(android.widget.ProgressBar(context))
+            addView(android.widget.TextView(context).apply {
+                text = "Loading video…"; setTextColor(android.graphics.Color.WHITE); setPadding(0, 24, 0, 0)
+            })
+        }
+        val box = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(loading, android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
+        }
+        // A pop-up over the app, video-shaped (16:9 until the video says otherwise); the player's full-screen button
+        // expands it, tapping outside or Back closes it.
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.setContentView(box)
+        dialog.setCanceledOnTouchOutside(true)
+        val popupWidth = (resources.displayMetrics.widthPixels * 0.92).toInt()
+        var aspect = 16f / 9
+        var isFull = false
+        fun popup() = dialog.window?.setLayout(popupWidth, (popupWidth / aspect).toInt())
+        fun fullScreen() = dialog.window?.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+        view.setFullscreenButtonClickListener { full -> isFull = full; if (full) fullScreen() else popup() }
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width > 0 && size.height > 0) { aspect = size.width * size.pixelWidthHeightRatio / size.height; if (!isFull) popup() }
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) loading.visibility = android.view.View.GONE
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                toast("Couldn't play the video"); dialog.dismiss()
+            }
+        })
+        val job = lifecycleScope.launch {
+            runCatching { load() }
+                .onSuccess { urls ->
+                    // Parts that are gone (deleted, a failed download) are left out: one would fail the whole video.
+                    val direct = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { urls.map(::withoutMdns).filter(::available) }
+                    if (direct.isEmpty()) { toast("Couldn't play the video"); dialog.dismiss(); return@onSuccess }
+                    // The parts of a visit play as one video: one progress bar across them, no gaps. Each part needs a
+                    // placeholder length until it loads (Media3 refuses "unknown" for plain files); if joining them
+                    // fails anyway, they play as a playlist.
+                    runCatching {
+                        val visit = androidx.media3.exoplayer.source.ConcatenatingMediaSource2.Builder().useDefaultMediaSourceFactory(this@MainActivity)
+                        direct.forEach { visit.add(androidx.media3.common.MediaItem.fromUri(it), 60_000L) }
+                        player.setMediaSource(visit.build())
+                    }.onFailure { player.setMediaItems(direct.map { androidx.media3.common.MediaItem.fromUri(it) }) }
+                    player.playWhenReady = true
+                    player.prepare()
+                }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) { toast("Couldn't open the video: ${it.message}"); dialog.dismiss() } }
+        }
+        dialog.setOnDismissListener { job.cancel(); player.release() }
+        dialog.show()
+        popup()
+    }
+
+    /** Whether the clip is there: its first byte answers within 3 s. */
+    private fun available(url: String): Boolean = runCatching {
+        (java.net.URL(url).openConnection() as java.net.HttpURLConnection).run {
+            connectTimeout = 3_000; readTimeout = 3_000; setRequestProperty("Range", "bytes=0-0")
+            try { responseCode in 200..299 } finally { disconnect() }
+        }
+    }.getOrDefault(false)
+
+    /** "homeassistant.local" costs ~1 s to look up, again for each connection the player opens: look it up once. */
+    private fun withoutMdns(url: String): String {
+        val host = Uri.parse(url).host ?: return url
+        if (!host.endsWith(".local")) return url
+        val ip = runCatching { java.net.InetAddress.getByName(host).hostAddress }.getOrNull() ?: return url
+        return url.replaceFirst("//$host", "//" + if (':' in ip) "[$ip]" else ip)
+    }
 
     override val canInstantNotifications get() = true
     override fun syncInstantNotifications() = LiveService.sync(this)

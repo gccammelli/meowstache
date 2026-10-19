@@ -29,7 +29,7 @@ class App : Application() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Pet alerts", NotificationManager.IMPORTANCE_DEFAULT)
         )
-        if (Repo.api.isLoggedIn) AlertWorker.schedule(this)
+        if (Repo.canCheckAlerts) AlertWorker.schedule(this)
     }
 }
 
@@ -56,7 +56,7 @@ suspend fun checkAlerts(ctx: Context): Boolean {
 class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         Repo.init(androidStorage(applicationContext))
-        if (!Repo.api.isLoggedIn) return Result.success()
+        if (!Repo.canCheckAlerts) return Result.success()
         if (LiveService.connected()) return Result.success() // instant notifications are on and connected: nothing to poll
         return if (checkAlerts(applicationContext)) Result.success() else Result.retry()
     }
@@ -74,10 +74,16 @@ class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             if (fresh.isEmpty()) return
             val canPost = ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            val nm = NotificationManagerCompat.from(ctx)
             for (a in fresh) {
                 if (!canPost) continue
-                NotificationManagerCompat.from(ctx).notify(a.key.hashCode(),
+                val id = a.slot.hashCode()
+                // Updates only rewrite a notification that's still showing; a dismissed one stays dismissed.
+                if (a.update && nm.activeNotifications.none { it.id == id }) continue
+                nm.notify(id,
                     NotificationCompat.Builder(ctx, CHANNEL)
+                        .setOnlyAlertOnce(true)
+                        .setSilent(a.update)
                         .setSmallIcon(R.drawable.ic_notification)
                         .setContentTitle(a.title)
                         .setContentText(a.body)

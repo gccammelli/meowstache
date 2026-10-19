@@ -1,10 +1,18 @@
 package io.github.gccammelli.meowstache.ui
 
+import io.github.gccammelli.meowstache.ESPHOME_FIRMWARE_URL
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import io.github.gccammelli.meowstache.*
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -149,7 +157,8 @@ fun splitWeight(lbs: Double?): Pair<String, String> =
 @Composable
 fun ErrorBanner() {
     val s = state()
-    if (Repo.demo) Text("Demo mode: a made-up robot and cats. Log out to use your own account.", color = W.Accent, fontSize = 12.sp,
+    if (Repo.demo) Text(if (Repo.localMode) "Demo mode: made-up robots on the ESPHome firmware, through a pretend Home Assistant. Log out to connect yours."
+        else "Demo mode: a made-up robot and cats. Log out to use your own account.", color = W.Accent, fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
     s.error?.let { Text("Couldn't refresh: $it", color = W.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp)) }
 }
@@ -204,17 +213,31 @@ private fun HomeTab(nav: NavHostController) {
         Greeting(s)
         Spacer(Modifier.height(16.dp))
         SectionHeader("Devices") { LayoutGlyph(!devicesGrid) { devicesGrid = !devicesGrid } }
-        if (devicesGrid) Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            s.robots.forEach { r ->
+        if (devicesGrid) s.robots.chunked(2).forEach { robots -> Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            robots.forEach { r ->
                 WCard(Modifier.weight(1f), onClick = { nav.navigate("robot/${r.serial}") }) {
-                    RobotArt(90.dp, Modifier.align(Alignment.CenterHorizontally))
-                    Text(r.name, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    StatusLine(r.status)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RobotArt(44.dp); Spacer(Modifier.width(6.dp))
+                        StatusDot(Color(r.status.second), 16.dp)
+                        Text(r.status.first, color = W.Text, fontSize = 13.sp, maxLines = 2, modifier = Modifier.weight(1f).padding(start = 6.dp))
+                    }
+                    Text(r.name, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Waste:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
+                            LevelBar(r.wastePercent / 100f, wasteColor(r.wastePercent)); Spacer(Modifier.height(8.dp))
+                            Text("${r.wastePercent}%", color = W.Text, fontSize = 13.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Litter:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
+                            LevelBar(litterFraction(r.litterState), litterColor(r.litterState), mid = true); Spacer(Modifier.height(8.dp))
+                            Text(r.litterLabel, color = W.Text, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
-            if (s.robots.size % 2 == 1) Spacer(Modifier.weight(1f))
-        } else s.robots.forEach { RobotCard(it) { nav.navigate("robot/${it.serial}") }; Spacer(Modifier.height(14.dp)) }
-        if (devicesGrid) Spacer(Modifier.height(14.dp))
+            if (robots.size == 1) Spacer(Modifier.weight(1f))
+        }; Spacer(Modifier.height(14.dp)) } else s.robots.forEach { RobotCard(it) { nav.navigate("robot/${it.serial}") }; Spacer(Modifier.height(14.dp)) }
         AddCard("Add a Device")
         Spacer(Modifier.height(16.dp))
         SectionHeader("Pets") { LayoutGlyph(!petsGrid) { petsGrid = !petsGrid } }
@@ -300,13 +323,107 @@ fun RobotCard(r: io.github.gccammelli.meowstache.Robot, onClick: (() -> Unit)?) 
     }
 }
 
+/** "Add a Device" / "Add a pet": not possible through the cloud API; in local mode a cat goes on a free tracker slot. */
 @Composable
-private fun AddCard(label: String) = WCard(Modifier.fillMaxWidth().height(56.dp), pad = 0.dp) {
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Filled.AddCircle, null, tint = W.Accent.copy(alpha = 0.5f), modifier = Modifier.size(24.dp))
-        Text(label, color = W.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp))
-        NotAvailable()
+private fun AddCard(label: String) {
+    val local = Repo.localMode
+    var open by remember { mutableStateOf(false) }
+    if (!local && !unavailableShown()) return
+    WCard(Modifier.fillMaxWidth().height(56.dp), pad = 0.dp, onClick = if (local) ({ open = true }) else ({ askUnavailable(label) })) {
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.AddCircle, null, tint = W.Accent.copy(alpha = if (local) 1f else 0.5f), modifier = Modifier.size(24.dp))
+            Text(label, color = if (local) W.Text else W.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp))
+            if (!local) NotAvailable()
+        }
     }
+    if (!open) return
+    val ctx = LocalPlatform.current
+    if (label.contains("Device")) ConfirmDialog("Add a robot",
+        "A robot shows up here once it runs the ESPHome firmware and Home Assistant has adopted it (Settings › Devices, it's discovered automatically). " +
+            "Flashing needs opening the robot; the firmware's guide has the steps.",
+        "Flashing guide", { ctx.openUrl("$ESPHOME_FIRMWARE_URL/src/branch/main/docs/Litter%20Robot%204/Flashing%20Instructions.md") }, { open = false }, dismiss = "Close")
+    else AddPetDialog { open = false }
+}
+
+/** Local mode: a new cat on a free cat tracker slot of the chosen robots, with a starting weight so visits match it. */
+@Composable
+private fun AddPetDialog(onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current
+    val scope = rememberCoroutineScope()
+    val robots = state().robots
+    var name by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var on by remember { mutableStateOf(robots.map { it.serial }.toSet()) }
+    var busy by remember { mutableStateOf(false) }
+    val lbs = weight.replace(',', '.').toDoubleOrNull()?.let { if (Repo.units.value == "kg") it / io.github.gccammelli.meowstache.LBS_TO_KG else it }
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = W.Card,
+        title = { Text("Add a cat", color = W.Text) },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(weight, { weight = it }, label = { Text("Weight (${Repo.unitLabel()})") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                Text("Uses robots", color = W.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
+                robots.forEach { r ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(r.serial in on, { on = if (it) on + r.serial else on - r.serial })
+                        Text(r.name, color = W.Text, fontSize = 14.sp)
+                    }
+                }
+                Text("Takes a free \"Cat N\" slot of the robot's cat tracker and names it in Home Assistant. The robot then matches visits to this weight.",
+                    color = W.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                if (busy) CircularProgressIndicator(color = W.Accent, modifier = Modifier.padding(top = 10.dp).align(Alignment.CenterHorizontally))
+            }
+        },
+        confirmButton = { TextButton(enabled = !busy && name.isNotBlank() && lbs != null && lbs > 0 && on.isNotEmpty(), onClick = {
+            busy = true
+            scope.launch {
+                Repo.addPet(name.trim(), lbs!!, on).fold(
+                    { full -> ctx.toast(if (full.isEmpty()) "${name.trim()} added" else "Added, but no free slot on ${full.joinToString()}") },
+                    { ctx.toast("Couldn't add: ${it.message}") })
+                busy = false; onDismiss()
+            }
+        }) { Text("Add", color = W.Accent) } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = W.Text2) } })
+}
+
+/** Local mode: rename the cat, set its weight in the robots' tracker, or reset the tracker. */
+@Composable
+private fun LocalPetDialog(p: io.github.gccammelli.meowstache.Pet, onRenamed: () -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(p.name) }
+    var weight by remember { mutableStateOf("") }
+    var reset by remember { mutableStateOf(false) }
+    val lbs = weight.replace(',', '.').toDoubleOrNull()?.let { if (Repo.units.value == "kg") it / io.github.gccammelli.meowstache.LBS_TO_KG else it }
+    AlertDialog(onDismissRequest = onDismiss, containerColor = W.Card,
+        title = { Text("Edit ${p.name}", color = W.Text) },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(weight, { weight = it }, label = { Text("Set tracker weight (${Repo.unitLabel()})") }, singleLine = true,
+                    placeholder = { Text(Repo.weight(p.referenceLbs)) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                Text("Only if the robot keeps matching visits to the wrong cat: the tracker then starts from this weight.",
+                    color = W.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("Reset tracker…", color = W.Red, fontSize = 14.sp, modifier = Modifier.padding(top = 16.dp).clickable { reset = true })
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            val newName = name.trim()
+            onDismiss()
+            Repo.launch {
+                if (lbs != null && lbs > 0) Repo.setTrackerWeight(p, lbs).onFailure { ctx.toast("Failed: ${it.message}") }
+                if (newName.isNotEmpty() && newName != p.name) Repo.renamePet(p, newName)
+                    .fold({ ctx.toast("Renamed to $newName"); onRenamed() }, { ctx.toast("Rename failed: ${it.message}") })
+            }
+        }) { Text("Save", color = W.Accent) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = W.Text2) } })
+    if (reset) ConfirmDialog("Reset ${p.name}'s tracker?", "The robots forget ${p.name}'s learned weight and zero the visit counters. " +
+        "The history on this phone stays. Set a weight afterwards so visits are matched again.", "Reset",
+        { Repo.launch { Repo.resetTracker(p).onFailure { ctx.toast("Failed: ${it.message}") } } }, { reset = false })
 }
 
 @Composable
@@ -505,9 +622,10 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
     val s = state()
     val p = s.pet(id) ?: return
     val r = s.readings(id)
-    var na by remember { mutableStateOf(false) }
+    var localEdit by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf<String?>(null) }
     val notes = Repo.local.collectAsState().value.petNotes[id] ?: io.github.gccammelli.meowstache.PetNotes()
+    if (localEdit) LocalPetDialog(p, { nav.popBackStack() }) { localEdit = false }
     Box(Modifier.fillMaxSize().background(W.Bg)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             NetImage(p.image, Modifier.fillMaxWidth().aspectRatio(1.67f))
@@ -517,9 +635,11 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
                 }
                 Text(petSummary(p), color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 10.dp))
                 r.lastOrNull()?.let { Text("Last Visit: ${fmt(it.ts, "dd/MM/yyyy HH:mm")}", color = W.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp)) }
-                Pill("Edit Profile", { na = true }, Modifier.padding(top = 16.dp).width(260.dp),
-                    icon = { Icon(Icons.Filled.Edit, null, tint = W.Accent) })
-                NotAvailable(Modifier.padding(top = 4.dp))
+                if (Repo.localMode || unavailableShown()) {
+                    Pill("Edit Profile", { if (Repo.localMode) localEdit = true else askUnavailable("Editing a pet's profile") }, Modifier.padding(top = 16.dp).width(260.dp),
+                        icon = { Icon(Icons.Filled.Edit, null, tint = W.Accent) })
+                    if (!Repo.localMode) NotAvailable(Modifier.padding(top = 4.dp))
+                }
             }
             Column(Modifier.padding(18.dp)) {
                 val (v, u) = splitWeight(yesterdayLbs(r))
@@ -558,7 +678,6 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
             save { it.copy(personality = PERSONALITIES.filter { t -> t in v }) }
         }
     }
-    if (na) InfoDialog("Edit Profile", "Editing pet profiles isn't available through the public API. Use the official app for now.") { na = false }
 }
 
 @Composable
@@ -621,7 +740,7 @@ fun ScaleDetailsScreen(nav: NavHostController, id: String) {
                     Text(buildAnnotatedString {
                         append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(it.lbs)) }
                     }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)))
+                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)), trailing = { ClipButton(it.ts, durations[it.ts]) })
             }
         }
     }
@@ -649,7 +768,7 @@ fun VisitDetailsScreen(nav: NavHostController, id: String) {
             HistoryList("Recent Visit History", r.asReversed(), shown, { shown += 20 }) {
                 EventRow(onClick = { nav.navigate("visit/$id/${it.ts}") },leading = { CircleIcon(Icons.Filled.Scale, W.Green, Color(0xFF1E1E1E), 34.dp) },
                     title = { Text("Pet Visit Recorded", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }))
+                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }), trailing = { ClipButton(it.ts, d[it.ts]) })
             }
         }
     }
@@ -676,6 +795,19 @@ fun <T> HistoryList(title: String, items: List<T>, shown: Int, more: () -> Unit,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().clickable(onClick = more).padding(12.dp))
         if (items.isEmpty()) Text("No history yet", color = W.Muted, modifier = Modifier.padding(8.dp))
     }
+
+/**
+ * ▶ for the video of the visit weighed at [ts] (GitHub #3), when Home Assistant has a clip near it. Clips go by time,
+ * not by cat, so a reassigned weighing keeps its video.
+ */
+@Composable
+fun ClipButton(ts: Long, visitMinutes: Double? = null) {
+    val clips by Repo.clips.collectAsState()
+    val parts = clipsFor(ts, clips, visitMinutes).ifEmpty { return }
+    val ctx = LocalPlatform.current
+    Icon(Icons.Filled.PlayCircle, "Play the visit's video", tint = W.Accent,
+        modifier = Modifier.clickable { ctx.playVideo { parts.map { Repo.clipUrl(it) } } }.padding(8.dp))
+}
 
 @Composable
 fun EventRow(leading: @Composable () -> Unit, title: @Composable () -> Unit, lines: List<String>, trailing: (@Composable () -> Unit)? = null, onClick: (() -> Unit)? = null) =

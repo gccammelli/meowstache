@@ -94,10 +94,10 @@ class LiveService : Service() {
         /** Starts or stops the service to match the setting (call from the foreground: Android limits background starts). */
         fun sync(ctx: Context) {
             val intent = Intent(ctx, LiveService::class.java)
-            if (enabled && Repo.api.isLoggedIn && !Repo.demo) {
+            // Whisker only for now; local mode (Home Assistant's live events) is the #4 follow-up.
+            if (enabled && Repo.api.isLoggedIn && !Repo.demo && !Repo.localMode) {
                 runCatching { ctx.startForegroundService(intent) }.onFailure { android.util.Log.w("Meowstache", "live service didn't start", it) }
-            }
-            else ctx.stopService(intent)
+            } else ctx.stopService(intent)
         }
     }
 }

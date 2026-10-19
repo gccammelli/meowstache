@@ -2,6 +2,9 @@
 .kotlin/
 build/
 local.properties
+.upstream-lr4/
+.upstream-lr4-report.md
+__pycache__/
 .idea/
 *.iml
 

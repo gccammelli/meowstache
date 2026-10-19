@@ -341,15 +341,15 @@ fun VisitSummaryScreen(nav: NavHostController, petId: String, ts: Long) {
                     RecapStat(splitWeight(v.lbs).first, splitWeight(v.lbs).second, "Weight", Modifier.weight(1f))
                     RecapStat(minutes?.let { "%.1f".format(it) } ?: "—", "min", "Duration", Modifier.weight(1f))
                 }
-                Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (unavailableShown()) Row(Modifier.padding(top = 10.dp).clickable { askUnavailable("Waste analysis") }, verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.WaterDrop, null, tint = W.Muted, modifier = Modifier.size(20.dp))
                     Column(Modifier.padding(start = 8.dp)) {
                         Text("Waste analysis (urine / feces)", color = W.Muted, fontSize = 12.sp); NotAvailable()
                     }
                 }
             }
-            Text("Pictures & Videos", color = W.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 14.dp))
-            WCard(Modifier.fillMaxWidth()) {
+            if (unavailableShown()) Text("Pictures & Videos", color = W.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 14.dp))
+            if (unavailableShown()) WCard(Modifier.fillMaxWidth(), onClick = { askUnavailable("Pictures and videos of a visit") }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Videocam, null, tint = W.Muted, modifier = Modifier.size(22.dp))
                     Column(Modifier.padding(start = 8.dp)) {

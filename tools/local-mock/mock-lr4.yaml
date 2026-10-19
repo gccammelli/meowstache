@@ -1,0 +1,239 @@
+# A pretend Litter-Robot 4 running Joseph DiGiovanni's ESPHome firmware, for testing Meowstache's local mode
+# without the hardware. Runs on a PC (ESPHome "host" platform) and talks to Home Assistant over the native API.
+# Entity names match the real firmware (litter-robot4.yaml); the cat tracker is the firmware's own component
+# and packages. Visits are simulated: press "Simulate Visit" or wait for the timer.
+#
+#   esphome -s name mock-lr4-a -s port 6053 -s mac "02:00:00:00:00:0a" -s cats "{5.17f, 3.90f}" run mock-lr4.yaml
+
+substitutions:
+  name: mock-lr4
+  friendly_name: Litter Robot 4
+  port: "6053"
+  mac: "02:00:00:00:00:01"
+  cats: "{5.17f, 3.90f}" # the cats that use this robot, in kg (converted to lb below)
+  visit_every: 20min
+  firmware: LR4/2026.10.0
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  project:
+    name: Joseph DiGiovanni.Litter Robot 4
+    version: "2026.10.0-mock"
+  on_boot:
+    then: [script.execute: boot]
+
+host:
+  mac_address: ${mac}
+
+logger:
+  level: INFO
+
+api:
+  port: ${port}
+
+external_components:
+  - source:
+      type: git
+      url: https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot.git
+      ref: ${firmware}
+    components: [cat_tracker]
+
+packages:
+  cat_tracker:
+    url: https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot.git
+    ref: ${firmware}
+    files: [packages/cat-tracker/default.yaml, packages/cat-tracker/weight-detection.yaml]
+
+globals:
+  - id: busy
+    type: bool
+    initial_value: "false"
+
+text_sensor:
+  - platform: template
+    id: status
+    name: "Status"
+    icon: "mdi:information"
+  - platform: template
+    id: power_type
+    name: "Power Type"
+  - platform: template
+    id: fault
+    name: "Fault"
+  - platform: template
+    id: hopper_status_custom
+    name: "Hopper Status"
+
+sensor:
+  - platform: template
+    id: waste_drawer_level
+    name: "Waste Drawer Level"
+    unit_of_measurement: "%"
+  - platform: template
+    id: litter_level
+    name: "Litter Level"
+    unit_of_measurement: "%"
+  - platform: template
+    id: last_cat_weight
+    name: "Last Cat Weight"
+    unit_of_measurement: lb
+    device_class: weight
+    state_class: measurement
+    accuracy_decimals: 2
+  - platform: template
+    id: clean_cycle_count
+    name: "Clean Cycles"
+    state_class: total_increasing
+    accuracy_decimals: 0
+
+binary_sensor:
+  - platform: template
+    id: waste_drawer_full
+    name: "Waste Drawer Full"
+    lambda: "return id(waste_drawer_level).state >= 100;"
+  - platform: template
+    id: sleeping
+    name: "Sleeping"
+  - platform: template
+    id: curtain_detected
+    name: "Curtain Detected"
+  - platform: template
+    id: weight_detected
+    name: "Weight Detected"
+  - platform: template
+    id: hopper_empty
+    name: "Hopper Empty"
+
+switch:
+  - platform: template
+    id: power
+    name: "Power"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_off: [text_sensor.template.publish: {id: status, state: "Powered off"}]
+    on_turn_on: [text_sensor.template.publish: {id: status, state: "Ready"}]
+  - {platform: template, id: control_panel_lockout, name: "Control Panel Lockout", optimistic: true}
+  - platform: template
+    id: litter_hopper
+    name: "Hopper"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on: [text_sensor.template.publish: {id: hopper_status_custom, state: "Ready"}]
+    on_turn_off: [text_sensor.template.publish: {id: hopper_status_custom, state: "Disabled"}]
+  - {platform: template, id: sleep_override, name: "Sleep Override", optimistic: true}
+  - {platform: template, id: smart_cat_detection, name: "Smart Cat Detection", optimistic: true, restore_mode: RESTORE_DEFAULT_ON}
+  - {platform: template, id: auto_cycle, name: "Auto Cycle", optimistic: true, restore_mode: RESTORE_DEFAULT_ON}
+  - {platform: template, id: sleep_schedule_sun, name: "Sunday Sleep Schedule", optimistic: true}
+  - {platform: template, id: sleep_schedule_mon, name: "Monday Sleep Schedule", optimistic: true}
+  - {platform: template, id: sleep_schedule_tue, name: "Tuesday Sleep Schedule", optimistic: true}
+  - {platform: template, id: sleep_schedule_wed, name: "Wednesday Sleep Schedule", optimistic: true}
+  - {platform: template, id: sleep_schedule_thu, name: "Thursday Sleep Schedule", optimistic: true}
+  - {platform: template, id: sleep_schedule_fri, name: "Friday Sleep Schedule", optimistic: true}
+  - {platform: template, id: sleep_schedule_sat, name: "Saturday Sleep Schedule", optimistic: true}
+
+datetime:
+  - {platform: template, type: time, name: "Sunday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Sunday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Monday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Monday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Tuesday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Tuesday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Wednesday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Wednesday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Thursday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Thursday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Friday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Friday Wake Time", optimistic: true, initial_value: "06:30:00"}
+  - {platform: template, type: time, name: "Saturday Sleep Time", optimistic: true, initial_value: "22:00:00"}
+  - {platform: template, type: time, name: "Saturday Wake Time", optimistic: true, initial_value: "06:30:00"}
+
+number:
+  - platform: template
+    id: clean_cycle_delay
+    name: "Clean Cycle Delay"
+    unit_of_measurement: min
+    min_value: 3
+    max_value: 30
+    step: 1
+    initial_value: 7
+    optimistic: true
+
+select:
+  - {platform: template, id: night_light_mode, name: "Night Light Mode", options: ["Off", "On", "Auto"], initial_option: "Auto", optimistic: true}
+  - {platform: template, id: night_light_brightness, name: "Night Light Brightness", options: ["Low", "Medium", "High"], initial_option: "Medium", optimistic: true}
+  - {platform: template, id: panel_brightness, name: "Panel Brightness", options: ["Low", "Medium", "High"], initial_option: "High", optimistic: true}
+
+button:
+  - platform: template
+    name: "Manual Cycle"
+    on_press: [script.execute: {id: cycle, wait: 0}]
+  - platform: template
+    name: "Empty Litter"
+    on_press: [lambda: "id(litter_level).publish_state(0);"]
+  - platform: template
+    name: "Replace Filter"
+    on_press:
+      - text_sensor.template.publish: {id: status, state: "Filter replacement in progress"}
+      - delay: 5s
+      - text_sensor.template.publish: {id: status, state: "Ready"}
+  - platform: template
+    name: "Reset"
+    on_press: [lambda: "id(waste_drawer_level).publish_state(0);"]
+  - platform: template
+    name: "Simulate Visit"
+    on_press: [script.execute: visit]
+
+interval:
+  - interval: ${visit_every}
+    then: [script.execute: visit]
+
+script:
+  # A cat steps in, is weighed, leaves; the robot cycles after the clean cycle delay (seconds here, not minutes).
+  - id: visit
+    then:
+      - if:
+          condition: {lambda: "return id(busy) || !id(power).state;"}
+          then: [script.stop: visit]
+      - lambda: |-
+          id(busy) = true;
+          id(weight_detected).publish_state(true);
+          id(curtain_detected).publish_state(true);
+          id(status).publish_state("Cat detected");
+      - delay: 8s
+      - lambda: |-
+          const float cats[] = ${cats};
+          const int n = sizeof(cats) / sizeof(cats[0]);
+          const float kg = cats[random_uint32() % n];
+          id(last_cat_weight).publish_state(kg * 2.20462f + (random_float() - 0.5f) * 0.3f);
+          id(weight_detected).publish_state(false);
+          id(curtain_detected).publish_state(false);
+          id(status).publish_state("Waiting to cycle");
+      - delay: !lambda "return (uint32_t) id(clean_cycle_delay).state * 1000;"
+      - script.execute: cycle
+      - lambda: "id(busy) = false;"
+  - id: cycle
+    then:
+      - text_sensor.template.publish: {id: status, state: "Clean cycle in progress"}
+      - delay: 6s
+      - lambda: |-
+          id(clean_cycle_count).publish_state(id(clean_cycle_count).state + 1);
+          id(waste_drawer_level).publish_state(std::min(100.0f, id(waste_drawer_level).state + 3));
+          id(litter_level).publish_state(std::max(40.0f, id(litter_level).state - 1));
+          id(status).publish_state("Ready");
+
+  - id: boot
+    then:
+      - lambda: |-
+          id(status).publish_state("Ready");
+          id(power_type).publish_state("AC");
+          id(fault).publish_state("None");
+          id(hopper_status_custom).publish_state("Ready");
+          id(waste_drawer_level).publish_state(42);
+          id(litter_level).publish_state(88);
+          id(clean_cycle_count).publish_state(1234);
+          id(sleeping).publish_state(false);
+          id(hopper_empty).publish_state(false);
+          id(weight_detected).publish_state(false);
+          id(curtain_detected).publish_state(false);
+

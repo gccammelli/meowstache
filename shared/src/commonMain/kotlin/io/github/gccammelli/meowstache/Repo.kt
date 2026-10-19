@@ -7,8 +7,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -97,45 +100,178 @@ private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = t
 object Repo {
     lateinit var api: Api; private set
     private lateinit var prefs: KeyValue
+    private lateinit var secrets: SecretStore
     private lateinit var files: AppFiles
     val state = MutableStateFlow(AppState())
     val units = MutableStateFlow("kg")
     /** Decimal places for weights: 1 like the official app, or 2 for extra precision. */
     val decimals = MutableStateFlow(1)
     val showBlogs = MutableStateFlow(false)
+    /** Whether things only Whisker's own app can do are shown (greyed, "not available"), or left out. */
+    val showUnavailable = MutableStateFlow(true)
+    /** Set when one of those is tapped: the app explains it's only in Whisker's app. */
+    val askUnavailable = MutableStateFlow<String?>(null)
     val alerts = MutableStateFlow(AlertSettings())
     val messages = MutableStateFlow<List<Message>>(emptyList())
     val local = MutableStateFlow(LocalData())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val refreshLock = Mutex()
 
-    private const val CACHE = "history2.json"
+    /** Cloud and local mode keep separate histories, so switching never mixes or wipes either. */
+    private val CACHE get() = if (localMode) "history-local.json" else "history2.json"
 
     fun init(p: PlatformStorage) {
         if (::api.isInitialized) return
         api = Api(p.auth, p.secrets)
         prefs = p.settings
+        secrets = p.secrets
         files = p.files
         units.value = (prefs.getString("units") ?: "kg")
         decimals.value = prefs.getInt("decimals", 1)
         showBlogs.value = prefs.getBoolean("showBlogs", false)
+        showUnavailable.value = prefs.getBoolean("showUnavailable", true)
         alerts.value = prefs.getString("alerts")?.let { runCatching { json.decodeFromString<AlertSettings>(it) }.getOrNull() } ?: AlertSettings()
         local.value = prefs.getString("local")?.let { runCatching { json.decodeFromString<LocalData>(it) }.getOrNull() } ?: LocalData()
         state.update { it.copy(overrides = local.value.overrides) }
         messages.value = prefs.getString("messages")?.let { runCatching { json.decodeFromString<List<Message>>(it) }.getOrNull() }.orEmpty()
+        // A new weighing (live updates, a refresh) looks for its clip, which the camera saves a little later.
+        scope.launch {
+            state.map { st -> st.acts.values.maxOfOrNull { a -> a.filter { it.value == "catWeight" }.maxOfOrNull { it.ts } ?: 0L } }
+                .distinctUntilChanged().collect { if (clipsFolder != null) loadClips() }
+        }
         loadCache()
-        if (demo) state.value = demoState()
+        if (demo) startDemo()
     }
 
     /** "Try the demo": made-up robot and cats, no account, nothing sent anywhere (see Demo.kt). */
     val demo get() = prefs.getBoolean("demo", false)
-    val signedIn get() = api.isLoggedIn || demo
+    val signedIn get() = if (localMode) demo || secrets.get("haToken") != null else api.isLoggedIn || demo
+    /** Background alert checks run for a real account: Whisker in cloud mode, Home Assistant in local mode; never the demo. */
+    val canCheckAlerts get() = !demo && (if (localMode) secrets.get("haToken") != null else api.isLoggedIn)
     val introAccepted get() = prefs.getBoolean("intro", false)
     fun acceptIntro() = prefs.putBoolean("intro", true)
-    fun email(): String = if (demo) DEMO_EMAIL else api.email
+    fun email(): String = when {
+        localMode -> if (demo) "Demo Home Assistant" else prefs.getString("haUrl").orEmpty()
+        demo -> DEMO_EMAIL
+        else -> api.email
+    }
     fun startDemo() {
         prefs.putBoolean("demo", true)
-        state.value = demoState()
+        if (localMode) { state.value = AppState(overrides = local().overrides); ha = null; refreshAsync() } else state.value = demoState()
+    }
+    private fun local() = this.local.value
+
+    /**
+     * Local mode: robots on the community ESPHome firmware, read through the user's Home Assistant
+     * instead of the manufacturer's cloud (HomeAssistant.kt). Chosen on the first screen; cloud is the default.
+     */
+    val localMode get() = prefs.getString("mode") == "local"
+    val modeChosen get() = prefs.getString("mode") != null
+    fun setMode(local: Boolean) {
+        prefs.putString("mode", if (local) "local" else "cloud")
+        ha = null
+        state.value = AppState(overrides = local().overrides)
+        loadCache()
+    }
+    // ---------- visit videos (GitHub #3) ----------
+
+    val clips = MutableStateFlow<List<Clip>>(emptyList())
+    /** The Home Assistant media folder holding the clips; null = visit videos off. */
+    val clipsFolder get() = prefs.getString("clipsFolder")
+    /** Local mode reuses its Home Assistant; Whisker mode has its own connection, for videos only. */
+    private fun clipsHa(): HaBackend? = when {
+        demo -> null
+        localMode -> runCatching { ha().backend }.getOrNull()
+        else -> prefs.getString("camUrl")?.let { u -> secrets.get("camToken")?.let { HaHttp(u, it) } }
+    }
+
+    /** The same Home Assistant through its address for away from home (Home Assistant Cloud, a VPN...), if set. */
+    private fun clipsAway(): HaBackend? {
+        val url = prefs.getString("camAwayUrl") ?: return null
+        val token = (if (localMode) secrets.get("haToken") else secrets.get("camToken")) ?: return null
+        return HaHttp(url, token)
+    }
+    private var awayUntil = 0L
+
+    /**
+     * Runs [f] on the home address, or on the away address if home doesn't answer within 3 s (".local" and LAN
+     * addresses only work at home). Away is remembered for 5 minutes, so it doesn't wait on home every time.
+     */
+    private suspend fun <T> viaHomeOrAway(f: suspend (HaBackend) -> T): T {
+        val home = clipsHa() ?: throw ApiException("Visit videos aren't connected")
+        val away = clipsAway() ?: return f(home)
+        if (nowMs() < awayUntil) return f(away)
+        val atHome = runCatching { withTimeout(3_000) { f(home) } }
+        if (atHome.isSuccess) return atHome.getOrThrow()
+        awayUntil = nowMs() + 5 * 60_000L
+        return f(away)
+    }
+
+    private suspend fun loadClips() {
+        val folder = clipsFolder
+        if (clipsHa() == null || folder == null) { clips.value = emptyList(); return }
+        runCatching { viaHomeOrAway { it.clips(folder) } }.onSuccess { clips.value = it } // offline: keep the last list
+        retryClipsIfMissing()
+    }
+
+    private var clipRetry: kotlinx.coroutines.Job? = null
+    /**
+     * A visit weighed in the last 10 minutes still without a clip (Ring saves it a few minutes later): look again in
+     * 20 s. After 10 minutes it stops; opening the app later still finds a clip that came late.
+     */
+    private fun retryClipsIfMissing() {
+        val now = nowMs()
+        val waiting = state.value.acts.values.flatten().any { it.value == "catWeight" && now - it.ts in 0..10 * 60_000L && clipsFor(it.ts, clips.value).isEmpty() }
+        if (!waiting || clipRetry?.isActive == true) return
+        clipRetry = scope.launch { kotlinx.coroutines.delay(20_000); loadClips() }
+    }
+
+    /**
+     * Checks the folder (and, in Whisker mode, the address and token), then keeps them, with an optional address for
+     * away from home. Returns the number of clips found.
+     */
+    suspend fun setVideos(folder: String, url: String? = null, rawToken: String? = null, awayUrl: String? = null): Int {
+        val f = folder.trim().trim('/').ifEmpty { throw ApiException("Enter the media folder's name") }
+        val token = rawToken.orEmpty().filterNot { it.isWhitespace() }
+        val b = if (localMode) ha().backend else HaHttp(url.orEmpty(), token)
+        val away = awayUrl?.trim()?.takeIf { it.isNotEmpty() }?.let { HaHttp(it, if (localMode) secrets.get("haToken").orEmpty() else token) }
+        val found = runCatching { withTimeout(5_000) { b.clips(f) } }.getOrElse { e -> away?.clips(f) ?: throw e }
+        if (!localMode) { prefs.putString("camUrl", b.base); secrets.set("camToken", token) }
+        prefs.putString("camAwayUrl", away?.base)
+        prefs.putString("clipsFolder", f)
+        awayUntil = 0
+        clips.value = found
+        return found.size
+    }
+
+    val clipsAwayUrl get() = prefs.getString("camAwayUrl")
+
+    fun videosOff() {
+        listOf("clipsFolder", "camUrl", "camAwayUrl").forEach { prefs.putString(it, null) }
+        secrets.set("camToken", null)
+        clips.value = emptyList()
+    }
+
+    suspend fun clipUrl(c: Clip): String = viaHomeOrAway { it.clipUrl(c) }
+
+    private var ha: LocalHa? = null
+    private fun ha(): LocalHa = ha ?: LocalHa(
+        if (demo) FakeHomeAssistant()
+        else HaHttp(prefs.getString("haUrl") ?: throw AuthException("Not connected"), secrets.get("haToken") ?: throw AuthException("Not connected"))
+    ).also { ha = it }
+
+    /** Checks the address and token by loading the robots, then keeps them (token in the secret store). */
+    suspend fun connectHa(url: String, rawToken: String): Int {
+        val token = rawToken.filterNot { it.isWhitespace() } // pasted tokens often carry line breaks or spaces
+        val client = HaHttp(url, token)
+        val found = LocalHa(client).load(nowMs()).robots.size
+        prefs.putBoolean("demo", false)
+        prefs.putString("haUrl", client.base)
+        secrets.set("haToken", token)
+        ha = null
+        state.value = AppState(overrides = local().overrides)
+        loadCache()
+        return found
     }
     private fun demoOnly(): Nothing = throw ApiException("Demo mode: there's no real robot to control")
 
@@ -184,6 +320,7 @@ object Repo {
     }
 
     private suspend fun saveCache() = withContext(Dispatchers.IO) {
+        val CACHE = CACHE
         if (demo) return@withContext // never mix demo data into the real history
         val st = state.value
         files.write(CACHE, json.encodeToString(HistoryCache(st.weights, st.acts)))
@@ -193,6 +330,7 @@ object Repo {
 
     fun setUnits(u: String) { units.value = u; prefs.putString("units", u) }
     fun setShowBlogs(v: Boolean) { showBlogs.value = v; prefs.putBoolean("showBlogs", v) }
+    fun setShowUnavailable(v: Boolean) { showUnavailable.value = v; prefs.putBoolean("showUnavailable", v) }
     fun setDecimals(d: Int) { decimals.value = d; prefs.putInt("decimals", d) }
     fun setAlerts(a: AlertSettings) { alerts.value = a; prefs.putString("alerts", json.encodeToString(a)) }
     fun updateLocal(f: (LocalData) -> LocalData) {
@@ -247,10 +385,11 @@ object Repo {
     /** The alerts not posted before: marks them sent and logs them to the Message Center. The platform then posts them. */
     fun takeFresh(alerts: List<PetAlert>): List<PetAlert> {
         val sent = sentAlertKeys()
-        val fresh = alerts.filter { it.key !in sent }
-        if (fresh.isEmpty()) return fresh
-        markSent(fresh.map { it.key })
-        fresh.forEach { addMessage(Message(nowMs(), it.title, it.body)) }
+        val all = alerts.filter { it.key !in sent }
+        if (all.isEmpty()) return all
+        markSent(all.map { it.key })
+        val fresh = mergeUpdates(all)
+        fresh.filter { !it.update }.forEach { addMessage(Message(nowMs(), it.title, it.body)) }
         return fresh
     }
 
@@ -265,6 +404,9 @@ object Repo {
     /** Signs out but keeps the history on the phone; [onLogin] drops it only if a different account signs in. */
     fun logout() {
         prefs.putBoolean("demo", false)
+        prefs.putString("haUrl", null)
+        ha = null
+        videosOff()
         api.logout()
         state.value = AppState(overrides = local.value.overrides)
     }
@@ -281,7 +423,9 @@ object Repo {
 
     // ---------- loading ----------
 
-    fun refreshAsync() = scope.launch { refresh() }
+    fun refreshAsync() = scope.launch { refresh(); loadClips() }
+    /** For work started from a dialog that closes right away (a dialog's own scope would cancel it). */
+    fun launch(block: suspend () -> Unit) = scope.launch { block() }
 
     /** Instant notifications (GitHub #4, Android): a live connection to the robots instead of the 30-minute check. */
     val instantNotifications get() = prefs.getBoolean("instant", false)
@@ -299,9 +443,10 @@ object Repo {
     }
 
     suspend fun refresh(full: Boolean = true) = refreshLock.withLock {
-        if (demo) return@withLock
+        if (demo && !localMode) return@withLock
         state.update { it.copy(loading = true, error = null) }
         try {
+            if (localMode) return@withLock refreshLocal()
             val uid = api.userId ?: throw AuthException("Not logged in")
             if (prefs.getString("owner") == null) prefs.putString("owner", uid)
             coroutineScope {
@@ -330,6 +475,21 @@ object Repo {
             state.update { it.copy(loading = false, historyLoading = false, error = e.message ?: e.toString()) }
             if (e is AuthException && !api.isLoggedIn) throw e
         }
+    }
+
+    /** Home Assistant keeps ~10 days of history by default, so fetch from a day before the newest cached row (or a year back). */
+    private suspend fun refreshLocal() {
+        val have = state.value.acts.values.flatten().maxOfOrNull { it.ts }
+        val snap = withContext(Dispatchers.Default) { ha().load(have?.minus(86_400_000L) ?: (nowMs() - 365L * 86_400_000L)) } // parsing a year of history is heavy
+        state.update { s ->
+            s.copy(
+                firstName = "", robots = snap.robots, pets = snap.pets,
+                weights = (s.weights.keys + snap.weights.keys).associateWith { merge(s.weights[it], snap.weights[it].orEmpty()) },
+                acts = (s.acts.keys + snap.acts.keys).associateWith { (s.acts[it].orEmpty() + snap.acts[it].orEmpty()).distinct().sortedByDescending { a -> a.ts } },
+                loading = false, historyLoading = false, updatedAt = nowMs(),
+            )
+        }
+        saveCache()
     }
 
     /** Pulls the whole weight and activity history and merges it into the on-device cache. */
@@ -391,6 +551,11 @@ object Repo {
     // ---------- commands ----------
 
     suspend fun command(robot: Robot, command: String, value: String? = null): Result<Unit> = runCatching {
+        if (localMode) {
+            ha().command(robot, command, value)
+            kotlinx.coroutines.delay(1000)
+            return@runCatching refresh(full = false)
+        }
         if (demo) demoOnly()
         val data = api.gql(LR4_ENDPOINT, """
             mutation sendCommand(${'$'}serial: String!, ${'$'}command: String!, ${'$'}value: String, ${'$'}commandSource: String) {
@@ -403,6 +568,7 @@ object Repo {
     }
 
     suspend fun rename(robot: Robot, name: String): Result<Unit> = runCatching {
+        if (localMode) return local { ha().renameRobot(robot, name) }
         if (demo) demoOnly()
         api.gql(LR4_ENDPOINT, "mutation rename(\$serial: String!, \$name: String) { updateLitterRobot4(input: { serial: \$serial, name: \$name }) { name } }",
             mapOf("serial" to robot.serial, "name" to name))
@@ -411,6 +577,7 @@ object Repo {
 
     /** pylitterbot: isRemoved = true disables the hopper; the API takes ~5 s to reflect it. */
     suspend fun toggleHopper(robot: Robot, removed: Boolean): Result<Unit> = runCatching {
+        if (localMode) return command(robot, if (removed) "hopperOff" else "hopperOn")
         if (demo) demoOnly()
         val r = api.gql(LR4_ENDPOINT, "mutation ToggleHopper(\$serial: String!, \$isRemoved: Boolean!) { toggleHopper(serial: \$serial, isRemoved: \$isRemoved) { success } }",
             mapOf("serial" to robot.serial, "isRemoved" to removed))
@@ -420,12 +587,14 @@ object Repo {
     }
 
     suspend fun triggerFirmwareUpdate(robot: Robot): Result<Boolean> = runCatching {
+        if (localMode) throw ApiException("Update the ESPHome firmware from Home Assistant or the ESPHome dashboard")
         if (demo) demoOnly()
         api.gql(LR4_ENDPOINT, "mutation updateFirmware(\$serial: String!) { litterRobot4TriggerFirmwareUpdate(input: {serial: \$serial}) { isUpdateTriggered } }",
             mapOf("serial" to robot.serial)).o("litterRobot4TriggerFirmwareUpdate")?.b("isUpdateTriggered") == true
     }
 
     suspend fun latestFirmware(robot: Robot): String? = runCatching {
+        if (localMode) return@runCatching "ESPHome firmware ${robot.raw.s("haFirmware") ?: ""}\nUpdates via Home Assistant / ESPHome"
         if (demo) return@runCatching "ESP 1.1.84 / PIC 10500.3072.2.93 / TOF 5.0.2.1\nUp to date"
         val f = api.gql(LR4_ENDPOINT, """query getFirmwareDetails(${'$'}serial: String!) { litterRobot4CompareFirmwareVersion(serial: ${'$'}serial) {
             isEspFirmwareUpdateNeeded isPicFirmwareUpdateNeeded isLaserboardFirmwareUpdateNeeded
@@ -436,6 +605,41 @@ object Repo {
         "ESP ${l?.s("espFirmwareVersion")} / PIC ${l?.s("picFirmwareVersion")} / TOF ${l?.s("laserBoardFirmwareVersion")}" +
             if (needed) "\nUpdate available" else "\nUp to date"
     }.getOrNull()
+
+    // ---------- local mode only: what the ESPHome firmware adds over the cloud ----------
+
+    /** Runs a Home Assistant change, then reloads what it touched. */
+    private suspend fun local(block: suspend () -> Unit): Result<Unit> = runCatching {
+        if (!localMode) throw ApiException("Only with the ESPHome firmware (local mode)")
+        block()
+        kotlinx.coroutines.delay(1000)
+        refresh(full = false)
+    }
+
+    /** A switch or button of the firmware, e.g. ("switch.auto_cycle", "turn_on"). */
+    suspend fun haCall(robot: Robot, role: String, service: String) = local { ha().call(robot, role, service) }
+    suspend fun haDiagnostics(appVersion: String): String = ha().diagnostics(appVersion)
+    suspend fun setSleep(robot: Robot, day: String, enabled: Boolean, sleepMin: Int, wakeMin: Int) = local { ha().setSleep(robot, day, enabled, sleepMin, wakeMin) }
+    suspend fun setTrackerWeight(pet: Pet, lbs: Double) = local { ha().setTrackerWeight(pet, lbs) }
+    suspend fun resetTracker(pet: Pet) = local { ha().resetTracker(pet) }
+
+    /** Renames the cat in Home Assistant; its history and notes here follow it to the new name. */
+    suspend fun renamePet(pet: Pet, name: String) = local {
+        ha().renamePet(pet, name)
+        val old = pet.id; val new = haPetId(name)
+        if (old != new) {
+            state.update { st -> st.copy(weights = st.weights - old + (new to merge(st.weights[new], st.weights[old].orEmpty()))) }
+            updateLocal { l -> l.copy(petNotes = l.petNotes[old]?.let { l.petNotes - old + (new to it) } ?: l.petNotes,
+                overrides = l.overrides.mapValues { (_, p) -> if (p == old) new else p }) }
+            saveCache()
+        }
+    }
+
+    /** Adds a cat on the chosen robots' free tracker slots; returns the robots that had none. */
+    suspend fun addPet(name: String, lbs: Double, robots: Set<String>): Result<List<String>> {
+        var full = emptyList<String>()
+        return local { full = ha().addPet(name, lbs, robots) }.map { full }
+    }
 
     // ---------- derived data ----------
 

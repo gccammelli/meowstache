@@ -34,8 +34,14 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.foundation.layout.width
+import io.github.gccammelli.meowstache.has
+import io.github.gccammelli.meowstache.haState
+import io.github.gccammelli.meowstache.haHidden
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
@@ -98,7 +104,7 @@ fun RobotScreen(nav: NavHostController, serial: String) {
     Column(Modifier.fillMaxSize().background(W.Bg)) {
         Box(Modifier.weight(1f)) {
             Screen({
-                BackTopBar("Litter-Robot 4", { nav.popBackStack() }) {
+                BackTopBar(robot.model, { nav.popBackStack() }) {
                     Icon(Icons.Outlined.Settings, "Settings", tint = W.Text, modifier = Modifier.size(26.dp).clickable { nav.navigate("robotSettings/$serial") })
                 }
             }) {
@@ -202,9 +208,12 @@ private fun hopperLabel(r: Robot): Pair<String, Long> = when {
 
 @Composable
 private fun HistoryTab(r: Robot) {
-    val s = state(); val ctx = LocalPlatform.current
+    val s = state(); val ctx = LocalPlatform.current; val scope = rememberCoroutineScope()
     val acts = s.acts[r.serial].orEmpty()
     val visible = remember(acts) { acts.filter { actLabel(it) != null } }
+    val clips by Repo.clips.collectAsState()
+    // Opens the visit's video (GitHub #3) through a link Home Assistant signs; the player shows it's loading meanwhile.
+    fun play(parts: List<io.github.gccammelli.meowstache.Clip>) = ctx.playVideo { parts.map { Repo.clipUrl(it) } }
     // Each weighing's visit length (same estimate as the daily recap), keyed by its time (GitHub #2).
     val visitMin = remember(acts, r.waitMinutes) {
         visitDurations(acts.filter { it.value == "catWeight" }.map { Reading(it.ts, it.actionValue?.toDoubleOrNull() ?: 0.0) }, acts, r.waitMinutes)
@@ -236,7 +245,8 @@ private fun HistoryTab(r: Robot) {
         }
         Text("Device Activity", color = W.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
         WCard(Modifier.fillMaxWidth()) {
-            visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null, visitMin[a.ts]) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
+            visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null, visitMin[a.ts],
+                clipsFor(a.ts, clips, visitMin[a.ts]).takeIf { a.value == "catWeight" && it.isNotEmpty() }?.let { c -> { play(c) } }) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
             if (visible.isEmpty()) Text(if (s.historyLoading) "Loading full history…" else "No activity yet", color = W.Muted)
             if (visible.size > shown) Text("See More", color = W.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clickable { shown += 25 }.padding(12.dp))
@@ -291,7 +301,7 @@ private fun CycleStat(value: String, label: String, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visitMinutes: Double?, onMenu: () -> Unit) {
+private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visitMinutes: Double?, onPlay: (() -> Unit)?, onMenu: () -> Unit) {
     val label = actLabel(a) ?: return
     if (a.value == "catWeight") {
         val lbs = a.actionValue?.toDoubleOrNull()
@@ -303,7 +313,10 @@ private fun ActivityRow(a: Act, pet: io.github.gccammelli.meowstache.Pet?, visit
                 }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             },
             lines = listOfNotNull(pet?.name ?: "Unassigned", visitMinutes?.let { "Visit: ≈ ${minSec(it)}" }, fmtAt(a.ts)),
-            trailing = { Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable(onClick = onMenu).padding(8.dp)) },
+            trailing = {
+                if (onPlay != null) Icon(Icons.Filled.PlayCircle, "Play the visit's video", tint = W.Accent, modifier = Modifier.clickable(onClick = onPlay).padding(8.dp))
+                Icon(Icons.Filled.MoreHoriz, "Show menu", tint = W.Text, modifier = Modifier.clickable(onClick = onMenu).padding(8.dp))
+            },
         )
     } else {
         val icon = when (a.value) {
@@ -333,7 +346,6 @@ private fun ControlsTab(r: Robot) {
     var sleep by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf(false) }
     val filterAt = Repo.local.collectAsState().value.filterAt[r.serial]
-    var na by remember { mutableStateOf<String?>(null) }
     fun run(cmd: String, value: String? = null) = scope.launch {
         Repo.command(r, cmd, value).onFailure { ctx.toast("Command failed: ${it.message}") }
             .onSuccess { ctx.toast("Sent") }
@@ -359,7 +371,7 @@ private fun ControlsTab(r: Robot) {
                 ControlButton(Icons.Filled.Bedtime, "Sleep Mode", if (r.sleepEnabled) "Enabled" else "Disabled", if (r.sleepEnabled) W.Green else W.Icon,
                     Modifier.weight(1f)) { sleep = true }
             }
-            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp).height(1.dp).background(W.Line))
+            Spacer(Modifier.height(24.dp))
             Row {
                 ControlButton(Icons.Filled.Air, "Replace Filter", filterAt?.let { "Replaced ${it.localDate().daysUntil(LocalDate.now())} days ago" },
                     W.Icon, Modifier.weight(1f)) { filter = true }
@@ -368,18 +380,24 @@ private fun ControlsTab(r: Robot) {
                 }
             }
             Spacer(Modifier.height(24.dp))
-            ControlButton(Icons.Filled.RestartAlt, "Reset Robot", null, W.Icon, Modifier.fillMaxWidth()) {
-                pending = Pending("Reset robot?", "This clears errors and may start a cycle. Make sure the globe is clear.", "Reset", "shortResetPress")
+            Row {
+                ControlButton(Icons.Filled.RestartAlt, "Reset Robot", null, W.Icon, Modifier.weight(1f)) {
+                    pending = Pending("Reset robot?", "This clears errors and may start a cycle. Make sure the globe is clear.", "Reset", "shortResetPress")
+                }
+                if (r.has("button.empty_litter")) ControlButton(Icons.Filled.DeleteSweep, "Empty Litter", null, W.Icon, Modifier.weight(1f)) {
+                    pending = Pending("Empty all litter?", "${r.name} turns to pour all of its litter into the waste drawer, e.g. to change litter. " +
+                        "Make sure no cat is inside and the drawer has room.", "Empty", "emptyLitter")
+                }
             }
         }
     }
     pending?.let { p -> ConfirmDialog(p.title, p.text, p.confirm, { run(p.command, p.value) }, { pending = null }) }
-    na?.let { InfoDialog("Not available", it) { na = null } }
     if (lights) LightsDialog(r, { lights = false }) { c, v -> run(c, v) }
-    if (sleep) SleepDialog(r) { sleep = false }
+    if (sleep) { if (Repo.localMode && r.has("switch.monday_sleep_schedule")) LocalSleepDialog(r) { sleep = false } else SleepDialog(r) { sleep = false } }
+    val robotFilter = r.has("button.replace_filter")
     if (filter) ConfirmDialog("Replace Filter", "Mark the carbon filter as replaced today? A new filter every 3 months is recommended. " +
-        "This is tracked on this phone; the robot's own filter reminder isn't reachable through the public API.", "Replaced",
-        { Repo.updateLocal { it.copy(filterAt = it.filterAt + (r.serial to nowMs())) } }, { filter = false })
+        if (robotFilter) "This also starts the robot's own filter replacement mode (the firmware's Replace Filter)." else "This is tracked on this phone; the robot's own filter reminder isn't reachable through the public API.", "Replaced",
+        { Repo.updateLocal { it.copy(filterAt = it.filterAt + (r.serial to nowMs())) }; if (robotFilter) run("replaceFilter") }, { filter = false })
 }
 
 @Composable
@@ -417,8 +435,10 @@ fun DeviceSettingsScreen(nav: NavHostController, serial: String) {
                     }
                     RobotArt(104.dp)
                 }
-                Box(Modifier.fillMaxWidth().padding(vertical = 10.dp).height(1.dp).background(W.Line))
-                ListRow("Warranty", onClick = null)
+                if (unavailableShown()) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp).height(1.dp).background(W.Line))
+                    ListRow("Warranty", onClick = null)
+                }
             }
             Spacer(Modifier.height(14.dp))
             WCard(Modifier.fillMaxWidth()) {
@@ -432,6 +452,46 @@ fun DeviceSettingsScreen(nav: NavHostController, serial: String) {
                     extra = lit?.formulation?.ifBlank { null }?.let { "Formulation: $it" })
                 ListRow("Cycle Delay", "Time: ${r.waitMinutes} minutes", { delay = true })
                 ListRow("Device Floor Surface", "Floor Surface: ${when (r.surface) { "TILE" -> "Wood/Tile"; "CARPET" -> "Carpet"; else -> "Unknown" }}", null)
+            }
+            val firmware = listOf(
+                Triple("switch.smart_cat_detection", "Smart Cat Detection", "Only counts a visit when both the weight and curtain sensors see a cat: fewer false cycles."),
+                Triple("switch.auto_cycle", "Auto Cycle", "Off: the robot doesn't clean after a visit; start cycles yourself (for jumpy cats or kittens)."),
+                Triple("switch.odor_control", "Odor Control", "Cycles sooner after a poop (WasteSense sensor)."),
+                Triple("switch.sleep_override", "Sleep Override", "Keeps the robot asleep until turned off. It sets every day's schedule to sleep; turning it off switches all days off, so set your schedule again."),
+            ).filter { r.has(it.first) }
+            // The firmware ships these disabled in Home Assistant; say what to enable instead of hiding the feature.
+            val hidden = r.haHidden()
+            val missing = listOfNotNull(
+                "sleep schedule (the 7 \"… Sleep Schedule\" switches and 14 sleep/wake times)".takeIf { hidden.any { "sleep_schedule" in it || "sleep_time" in it || "wake_time" in it } },
+                "LitterHopper on/off (\"Hopper\")".takeIf { "switch.hopper" in hidden },
+                "Auto Cycle".takeIf { "switch.auto_cycle" in hidden },
+            )
+            if (Repo.localMode && missing.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                WCard(Modifier.fillMaxWidth()) {
+                    Text("More controls in Home Assistant", color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("These are disabled in Home Assistant, so Meowstache can't use them yet: ${missing.joinToString("; ")}. " +
+                        "Enable them on the robot's device page (Settings › Devices › ${r.name} › entities not shown), then reopen Meowstache.",
+                        color = W.Text2, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+            if (firmware.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                WCard(Modifier.fillMaxWidth()) {
+                    Text("ESPHome firmware", color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    firmware.forEach { (role, label, hint) ->
+                        val on = r.haState(role) == "on"
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text(label, color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(hint, color = W.Text2, fontSize = 12.sp)
+                            }
+                            androidx.compose.material3.Switch(on, { v ->
+                                scope.launch { Repo.haCall(r, role, if (v) "turn_on" else "turn_off").onFailure { ctx.toast("Failed: ${it.message}") } }
+                            })
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(14.dp))
             WCard(Modifier.fillMaxWidth()) {
@@ -560,6 +620,61 @@ private fun LightsDialog(r: Robot, onDismiss: () -> Unit, run: (String, String?)
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = W.Text2) } })
 }
 
+/** Local mode: the ESPHome firmware's per-day sleep schedule, editable (each day on/off, sleep and wake time). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun LocalSleepDialog(r: Robot, onDismiss: () -> Unit) {
+    val ctx = LocalPlatform.current
+    val scope = rememberCoroutineScope()
+    val names = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    val o = r.raw.o("weekdaySleepModeEnabled")
+    val start = names.associateWith { d -> Triple(o?.o(d)?.b("isEnabled") == true, o?.o(d)?.i("sleepTime") ?: 22 * 60, o?.o(d)?.i("wakeTime") ?: 6 * 60) }
+    var days by remember { mutableStateOf(start) }
+    var editing by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // day, true = sleep time
+    fun hhmm(m: Int) = "%02d:%02d".format(m / 60 % 24, m % 60)
+    AlertDialog(onDismissRequest = onDismiss, containerColor = W.Card,
+        title = { Text("Sleep Mode", color = W.Text, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
+        text = {
+            Column {
+                names.forEach { d ->
+                    val (on, sl, wk) = days.getValue(d)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                        Text(d.take(3), color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(44.dp))
+                        Text(hhmm(sl), color = if (on) W.Accent else W.Muted, fontSize = 15.sp, modifier = Modifier.clickable { editing = d to true }.padding(8.dp))
+                        Text("–", color = W.Text2)
+                        Text(hhmm(wk), color = if (on) W.Accent else W.Muted, fontSize = 15.sp, modifier = Modifier.clickable { editing = d to false }.padding(8.dp))
+                        Spacer(Modifier.weight(1f))
+                        androidx.compose.material3.Switch(on, { days = days + (d to Triple(it, sl, wk)) })
+                    }
+                }
+                Text("The robot doesn't cycle while asleep. Tap a time to change it.", color = W.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            val changed = days.filter { (d, v) -> v != start[d] }
+            onDismiss()
+            Repo.launch {
+                for ((d, v) in changed) Repo.setSleep(r, d, v.first, v.second, v.third).onFailure { ctx.toast("Failed: ${it.message}"); return@launch }
+                if (changed.isNotEmpty()) ctx.toast("Sleep schedule saved")
+            }
+        }) { Text("Save", color = W.Accent) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = W.Text2) } })
+    editing?.let { (d, isSleep) ->
+        val (on, sl, wk) = days.getValue(d)
+        val m = if (isSleep) sl else wk
+        val st = androidx.compose.material3.rememberTimePickerState(m / 60, m % 60, is24Hour = true)
+        AlertDialog(onDismissRequest = { editing = null }, containerColor = W.Card,
+            title = { Text("$d ${if (isSleep) "sleep" else "wake"} time", color = W.Text) },
+            text = { androidx.compose.material3.TimeInput(st) },
+            confirmButton = { TextButton(onClick = {
+                val t = st.hour * 60 + st.minute
+                days = days + (d to if (isSleep) Triple(true, t, wk) else Triple(true, sl, t))
+                editing = null
+            }) { Text("OK", color = W.Accent) } },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel", color = W.Text2) } })
+    }
+}
+
 /** The robot's sleep schedule as the official app shows it (weekdays / weekends). Read-only: the edit mutation isn't known. */
 @Composable
 private fun SleepDialog(r: Robot, onDismiss: () -> Unit) {
@@ -586,7 +701,8 @@ private fun SleepDialog(r: Robot, onDismiss: () -> Unit) {
                     }
                     Box(Modifier.fillMaxWidth().padding(bottom = 10.dp).height(1.dp).background(W.Line))
                 }
-                Text("Editing the schedule isn't available through the public API yet.", color = W.Muted, fontSize = 12.sp)
+                Text(if (Repo.localMode) "To change the schedule here, enable the robot's sleep schedule entities in Home Assistant (they're disabled by default)."
+                    else "Editing the schedule isn't available through the public API yet.", color = W.Muted, fontSize = 12.sp)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = W.Accent) } })

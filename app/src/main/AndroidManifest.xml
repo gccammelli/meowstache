@@ -16,6 +16,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Meowstache"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Meowstache">
         <activity
             android:name=".MainActivity"
