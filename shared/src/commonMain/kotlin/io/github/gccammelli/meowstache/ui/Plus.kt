@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Videocam
@@ -82,7 +83,7 @@ fun marksFor(b: List<Bucket>, range: Range, patterns: Map<LocalDate, List<Patter
     else b.map { bk -> patterns[bk.start].orEmpty().firstOrNull { it.metric == metric }?.let { if (it.up) 1 else -1 } ?: 0 }
 
 @Composable
-fun PatternLine(p: Pattern) = Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+fun PatternLine(p: Pattern, onDismiss: (() -> Unit)? = null) = Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
     Box(Modifier.size(22.dp).background(W.Text, CircleShape), contentAlignment = Alignment.Center) {
         Icon(if (p.up) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward, null, tint = W.Ink, modifier = Modifier.size(15.dp))
     }
@@ -92,6 +93,8 @@ fun PatternLine(p: Pattern) = Row(Modifier.fillMaxWidth().padding(vertical = 6.d
     }
     Text(if (p.significant) "Significant" else "Notable", color = if (p.significant) W.Text else W.Text2,
         fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+    if (onDismiss != null) Icon(Icons.Filled.Close, "Dismiss", tint = W.Text2,
+        modifier = Modifier.padding(start = 4.dp).clickable(onClick = onDismiss).padding(6.dp).size(18.dp))
 }
 
 /** Footer under a chart listing the patterns inside the visible range. */
@@ -113,13 +116,18 @@ fun BetaBadge() = Text("BETA", color = Color(0xFF2B2B2B), fontSize = 10.sp, font
 fun PatternsCard(s: AppState, petId: String) {
     val days = remember { (0..30).map { LocalDate.now().minusDays(it.toLong()) } }
     val all = rememberPatterns(s, petId, days).values.flatten().sortedByDescending { it.day }
+    val dismissed = Repo.local.collectAsState().value.dismissedPatterns
+    val shown = all.filter { it.key(petId) !in dismissed }
     WCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Patterns", color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold); BetaBadge()
         }
         Text("Days that differ from this pet's own previous 4 weeks.", color = W.Text2, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
-        if (all.isEmpty()) Text("Everything looks normal over the last 30 days.", color = W.Green, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-        all.take(6).forEach { PatternLine(it) }
+        if (shown.isEmpty()) Text(if (all.isEmpty()) "Everything looks normal over the last 30 days." else "Nothing new over the last 30 days.",
+            color = W.Green, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+        shown.take(6).forEach { p ->
+            PatternLine(p) { Repo.updateLocal { l -> l.copy(dismissedPatterns = l.dismissedPatterns + p.key(petId)) } }
+        }
     }
 }
 

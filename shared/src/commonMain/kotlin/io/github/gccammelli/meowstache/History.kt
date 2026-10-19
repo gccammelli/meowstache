@@ -369,6 +369,8 @@ enum class Metric(val label: String) { VISITS("Visits"), WEIGHT("Weight"), DURAT
 /** A day that stands out from the pet's own previous 4 weeks. */
 data class Pattern(val metric: Metric, val day: LocalDate, val baseline: Double, val value: Double, val significant: Boolean) {
     val up get() = value > baseline
+    /** Stable id for dismissing it: one pattern per pet, metric and day. */
+    fun key(petId: String) = "$petId|$metric|$day"
     fun text(weight: (Double) -> String): String {
         val dir = if (up) "Increased" else "Decreased"
         val from = when (metric) { Metric.WEIGHT -> weight(baseline); Metric.DURATION -> "%.0f min".format(baseline); else -> "%.0f".format(baseline) }

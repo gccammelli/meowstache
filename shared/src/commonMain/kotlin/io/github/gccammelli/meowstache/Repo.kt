@@ -73,6 +73,7 @@ data class LocalData(
     val filterAt: Map<String, Long> = emptyMap(), // serial → when the filter was last replaced
     val petNotes: Map<String, PetNotes> = emptyMap(),
     val overrides: Map<Long, String> = emptyMap(), // weight reading time → pet id ("" = unassigned)
+    val dismissedPatterns: Set<String> = emptySet(), // Pattern.key(petId) the owner dismissed from the Patterns card
 )
 
 /**
@@ -313,7 +314,8 @@ object Repo {
         val l = b.local
         updateLocal { c -> // what's already on this phone wins
             c.copy(region = c.region.ifBlank { l.region }, litter = l.litter + c.litter, scoopsBase = l.scoopsBase + c.scoopsBase,
-                filterAt = l.filterAt + c.filterAt, petNotes = l.petNotes + c.petNotes, overrides = l.overrides + c.overrides)
+                filterAt = l.filterAt + c.filterAt, petNotes = l.petNotes + c.petNotes, overrides = l.overrides + c.overrides,
+                dismissedPatterns = l.dismissedPatterns + c.dismissedPatterns)
         }
         saveCache()
         state.value.acts.values.sumOf { a -> a.count { it.value == "catWeight" } }
