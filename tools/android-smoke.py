@@ -61,8 +61,8 @@ def main():
         except ET.ParseError:
             return ET.Element("empty")
 
-    def find(label, scroll=False):
-        for attempt in range(12):
+    def find(label, scroll=False, attempts=12):
+        for attempt in range(attempts):
             root = tree()
             nodes = [n for n in root.iter("node") if n.get("package") == package and
                      (n.get("text") == label or n.get("content-desc") == label)]
@@ -86,11 +86,22 @@ def main():
         run(*adb, "shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2))
         time.sleep(0.5)
 
+    def tap_until_visible(label, next_label, next_scroll=False):
+        # A freshly launched Compose activity can expose its accessibility tree
+        # just before it is ready to consume the first synthetic tap.
+        for _ in range(3):
+            tap(label)
+            try:
+                return find(next_label, scroll=next_scroll, attempts=4)
+            except AssertionError:
+                pass
+        raise AssertionError(f"Tapping {label!r} did not show {next_label!r}; see {output}")
+
     def capture(name):
         (output / f"{name}.png").write_bytes(run(*adb, "exec-out", "screencap", "-p", binary=True))
 
     try:
-        tap("Local: Home Assistant")
+        tap_until_visible("Local: Home Assistant", "I understand", next_scroll=True)
         tap("I understand", scroll=True)
         tap("Try the demo")
         find("Robbie")
