@@ -124,11 +124,18 @@ Run the offline safety tests:
 build/ios-tools/python/bin/python -m unittest discover -s tools/ios -p 'test_*.py' -v
 ```
 
-Last verified on X1 (2026-10-18): USB pairing, Developer Mode, personalized iOS 27
-developer disk image mount, and a published RemoteXPC tunnel. The temporary
-tunnel was stopped afterward. Signed app/WDA installation and actual UI tests
-have not run. Enrollment activation, signing credentials and project write/build
-access remain prerequisites, not completed setup.
+Last verified on X1 (2026-10-19): provisioned through the API, signed with zsign,
+both bundles installed, and `smoke.py` passed twice on a USB iPhone (iOS 27) through
+a preinstalled WDA over a RemoteXPC tunnel. Not yet scheduled or wired to CI.
+
+Tunnel gotcha: `tunnel-creation` runs as root and records its registry port in
+root's `~/.local/share/appium-xcuitest-driver-nodejs/strongbox/tunnelRegistryPort`.
+Appium (as your user) reads its own copy, so copy that file into your user's same
+path, or WDA launch fails with "RemoteXPC is not available for this session".
+
+iOS doesn't expose the segmented control's selected trait to XCUITest (no
+`Selected` trait on any segment), so the smoke reads the command back from the
+Controls tile label (`Lights\n<mode>`) and always switches to a different mode.
 
 Official setup references:
 

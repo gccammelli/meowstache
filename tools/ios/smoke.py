@@ -88,15 +88,14 @@ def exercise(driver, directory):
     driver.find("Bobbie")
     driver.tap("Robbie")
     driver.tap("Controls")
-    driver.tap("Lights")
-    driver.tap("Off")
+    # Read back from the Controls tile ("Lights\n<mode>"): iOS doesn't expose the segment's selected trait.
+    modes = ["On", "Off", "Auto"]
+    current = next(m for m in modes if driver.request("POST", "/elements", {"using": "accessibility id", "value": f"Lights\n{m}"}))
+    target = modes[(modes.index(current) + 1) % 3]  # always a real change, so the readback proves the command
+    driver.tap(f"Lights\n{current}")
+    driver.tap(target)
     driver.tap("Set")
-    driver.tap("Lights")
-    off = driver.find("Off")
-    selected = driver.request("GET", f"/element/{off}/attribute/selected")
-    if str(selected).lower() not in ("true", "1"):
-        raise AssertionError("Night-light command did not read back as Off")
-    driver.tap("Cancel")
+    driver.find(f"Lights\n{target}")
     driver.capture(directory, "controls")
     driver.tap("History")
     driver.capture(directory, "history")
