@@ -29,4 +29,14 @@ class ClipsTest {
         assertEquals(listOf(part1, part2), clipsFor(w, listOf(nextCat, part2, part1)))
         assertEquals(listOf(part1, part2), clipsFor(w + 3 * 60_000, listOf(part1, part2)))
     }
+
+    @Test fun aLongVisitPlaysEveryRecordingThatStartedDuringIt() {
+        // A long visit can start outside the ordinary five-minute matching window.
+        val w = 1_792_431_791_000L
+        val approach = Clip(w - 7 * 60_000, "1")
+        val end = Clip(w - 30_000, "2")
+        val earlier = Clip(w - 10 * 60_000, "0") // before the cat came in: another visit or just motion
+        assertEquals(listOf(end), clipsFor(w, listOf(earlier, approach, end)))
+        assertEquals(listOf(approach, end), clipsFor(w, listOf(earlier, approach, end), visitMinutes = 7.0))
+    }
 }

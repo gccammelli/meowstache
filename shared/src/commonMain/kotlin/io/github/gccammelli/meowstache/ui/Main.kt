@@ -740,7 +740,7 @@ fun ScaleDetailsScreen(nav: NavHostController, id: String) {
                     Text(buildAnnotatedString {
                         append("Weight recorded - "); withStyle(SpanStyle(color = W.Accent)) { append(Repo.weight(it.lbs)) }
                     }, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)), trailing = { ClipButton(it.ts) })
+                }, lines = listOfNotNull(p.name, durations[it.ts]?.let { m -> "Visit: ≈ ${minSec(m)}" }, fmtAt(it.ts)), trailing = { ClipButton(it.ts, durations[it.ts]) })
             }
         }
     }
@@ -768,7 +768,7 @@ fun VisitDetailsScreen(nav: NavHostController, id: String) {
             HistoryList("Recent Visit History", r.asReversed(), shown, { shown += 20 }) {
                 EventRow(onClick = { nav.navigate("visit/$id/${it.ts}") },leading = { CircleIcon(Icons.Filled.Scale, W.Green, Color(0xFF1E1E1E), 34.dp) },
                     title = { Text("Pet Visit Recorded", color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold) },
-                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }), trailing = { ClipButton(it.ts) })
+                    lines = listOfNotNull(fmtAt(it.ts), d[it.ts]?.let { m -> "≈ ${minSec(m)}" }), trailing = { ClipButton(it.ts, d[it.ts]) })
             }
         }
     }
@@ -801,9 +801,9 @@ fun <T> HistoryList(title: String, items: List<T>, shown: Int, more: () -> Unit,
  * not by cat, so a reassigned weighing keeps its video.
  */
 @Composable
-fun ClipButton(ts: Long) {
+fun ClipButton(ts: Long, visitMinutes: Double? = null) {
     val clips by Repo.clips.collectAsState()
-    val parts = clipsFor(ts, clips).ifEmpty { return }
+    val parts = clipsFor(ts, clips, visitMinutes).ifEmpty { return }
     val ctx = LocalPlatform.current
     Icon(Icons.Filled.PlayCircle, "Play the visit's video", tint = W.Accent,
         modifier = Modifier.clickable { ctx.playVideo { parts.map { Repo.clipUrl(it) } } }.padding(8.dp))

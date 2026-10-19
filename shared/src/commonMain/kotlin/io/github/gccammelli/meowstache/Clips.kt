@@ -23,15 +23,18 @@ fun clipTime(name: String): Long? = CLIP_NAME.find(name)?.destructured?.let { (y
 }
 
 /**
- * The clips of the visit weighed at [weighTs], oldest first: the nearest from 5 minutes before (stream cameras start
- * recording at the cat detection) to 10 minutes after (Ring hands its recording over a few minutes late), plus its
- * neighbours less than 2 minutes apart: Ring splits a long visit into recordings saved about a minute apart.
+ * The clips of the visit weighed at [weighTs], oldest first: the nearest from the known visit start (otherwise 5
+ * minutes before) to 10 minutes after, plus its neighbours less than 2 minutes apart. Ring splits a long visit into
+ * recordings saved about a minute apart.
  */
-fun clipsFor(weighTs: Long, clips: List<Clip>): List<Clip> {
-    val near = clips.filter { it.ts - weighTs in -5 * 60_000L..10 * 60_000L }.sortedBy { it.ts }
+fun clipsFor(weighTs: Long, clips: List<Clip>, visitMinutes: Double? = null): List<Clip> {
+    val start = visitMinutes?.takeIf { it.isFinite() && it >= 0 }?.let { weighTs - (it * 60_000).toLong() - 30_000L }
+    val near = clips.filter { it.ts in (start ?: weighTs - 5 * 60_000L)..weighTs + 10 * 60_000L }.sortedBy { it.ts }
     var first = near.indices.minByOrNull { kotlin.math.abs(near[it].ts - weighTs) } ?: return emptyList()
     var last = first
-    while (first > 0 && near[first].ts - near[first - 1].ts < 2 * 60_000L) first--
+    // Clips that started during a visit of known length (back to 30 s before the cat came in) are its parts too:
+    // Ring's short recordings of a long visit can start more than 2 minutes apart.
+    while (first > 0 && (near[first].ts - near[first - 1].ts < 2 * 60_000L || start != null && near[first - 1].ts >= start)) first--
     while (last < near.lastIndex && near[last + 1].ts - near[last].ts < 2 * 60_000L) last++
     return near.subList(first, last + 1)
 }
