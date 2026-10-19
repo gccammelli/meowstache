@@ -1,0 +1,62 @@
+name: Public issue queue
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+  schedule:
+    - cron: "17 6,18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  queue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Queue a bounded public request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENABLED: ${{ secrets.PUBLIC_ISSUE_AGENT_ENABLED }}
+          BODY: ${{ github.event.issue.body }}
+          ISSUE: ${{ github.event.issue.number }}
+          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          [[ "$ENABLED" == "true" ]] || exit 0
+          jq -e 'index("bug") or index("enhancement")' <<< "$LABELS" >/dev/null || exit 0
+          jq -e 'index("agent-backlog") or index("agent-attempted") or index("agent-working") or index("agent-pr")' <<< "$LABELS" >/dev/null && exit 0
+          [[ ${#BODY} -ge 40 && ${#BODY} -le 60000 ]] || exit 0
+          gh issue edit "$ISSUE" --repo "$REPOSITORY" --add-label agent-backlog
+          gh issue comment "$ISSUE" --repo "$REPOSITORY" --body "Cammelli bot queued this request for restricted assessment. At most two public requests start per UTC day; safe changes become draft pull requests and are never auto-merged."
+
+  drain:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    concurrency:
+      group: public-issue-drain
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+    steps:
+      - name: Start one queued request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENABLED: ${{ secrets.PUBLIC_ISSUE_AGENT_ENABLED }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          [[ "$ENABLED" == "true" ]] || exit 0
+          issue=$(gh issue list --repo "$REPOSITORY" --state open --label agent-backlog --search 'sort:created-asc' --limit 1 --json number --jq '.[0].number // empty')
+          [[ -n "$issue" ]] || exit 0
+          gh issue edit "$issue" --repo "$REPOSITORY" --add-label agent-attempted,agent-working --remove-label agent-backlog
+          if ! gh workflow run public-issue.yml --repo "$REPOSITORY" --ref main -f issue_number="$issue"; then
+            gh issue edit "$issue" --repo "$REPOSITORY" --remove-label agent-attempted,agent-working --add-label agent-backlog
+            exit 1
+          fi
+          gh issue comment "$issue" --repo "$REPOSITORY" --body "Cammelli bot is assessing this request in a restricted workspace. Safe changes may become a tested draft pull request; public requests are never auto-merged."
