@@ -13,11 +13,14 @@ import zipfile
 
 TEST_APP = "io.github.gccammelli.meowstache.testbed"
 WDA = TEST_APP + ".wda.xctrunner"
+PANDY = "io.github.gccammelli.pandy.testbed"
+LIBERPET = "io.github.gccammelli.liberpet.testbed"
+INSTALL_TARGETS = {"app": TEST_APP, "wda": WDA, "pandy": PANDY, "liberpet": LIBERPET}
 
 
 def validate_profile(info, profile, expected, team, udid):
-    if expected not in (TEST_APP, WDA):
-        raise ValueError("Only the isolated test app and its WDA runner may be installed")
+    if expected not in INSTALL_TARGETS.values():
+        raise ValueError("Only an isolated Cammelli test app or its WDA runner may be installed")
     if not re.fullmatch(r"[A-Z0-9]{10}", team):
         raise ValueError("A 10-character Apple Developer Team ID is required")
     if info.get("CFBundleIdentifier") != expected:
@@ -91,12 +94,12 @@ async def install(path, expected, team):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["app", "wda"])
+    parser.add_argument("kind", choices=INSTALL_TARGETS)
     parser.add_argument("ipa", type=Path)
     args = parser.parse_args()
     logging.disable(logging.CRITICAL)
     try:
-        asyncio.run(install(args.ipa.resolve(), TEST_APP if args.kind == "app" else WDA,
+        asyncio.run(install(args.ipa.resolve(), INSTALL_TARGETS[args.kind],
                             os.environ.get("IOS_TEAM_ID", "")))
     except Exception as exc:
         # Service errors can contain personal device/signing details; don't echo them to CI.

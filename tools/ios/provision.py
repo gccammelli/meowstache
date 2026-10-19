@@ -22,7 +22,11 @@ from cryptography.x509.oid import NameOID
 from install import TEST_APP, WDA
 
 API = "https://api.appstoreconnect.apple.com/v1"
-PROFILE_PREFIX = "Meowstache testbed "
+APPS = {
+    "meowstache": (TEST_APP, "Meowstache"),
+    "pandy": ("io.github.gccammelli.pandy.testbed", "Pandy"),
+    "liberpet": ("io.github.gccammelli.liberpet.testbed", "LiberPet"),
+}
 
 
 def token(key_id, issuer, key_pem):
@@ -96,8 +100,8 @@ def ensure_certificate(api, private):
     return created["id"]
 
 
-def make_profile(api, private, identifier, bundle_id, cert_id, device_id):
-    name = PROFILE_PREFIX + identifier.rsplit(".", 1)[-1]
+def make_profile(api, private, identifier, bundle_id, cert_id, device_id, prefix):
+    name = prefix + identifier.rsplit(".", 1)[-1]
     # Only our own named profiles are replaced, so a new device or certificate is always included.
     for old in api.call("GET", "/profiles", **{"filter[name]": name})["data"]:
         if old["attributes"]["name"] == name:
@@ -115,16 +119,22 @@ def make_profile(api, private, identifier, bundle_id, cert_id, device_id):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args()
+    parser.add_argument("--app", choices=APPS, default="meowstache")
+    args = parser.parse_args()
     private = Path(os.environ.get("IOS_PRIVATE_DIR", Path.home() / "secrets/max/apple")).expanduser()
     private.mkdir(mode=0o700, parents=True, exist_ok=True)
     key_file = Path(os.environ["ASC_KEY"]).expanduser()
     api = Api(token(os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"], key_file.read_bytes()))
     device_id = ensure_device(api, usb_udid())
     cert_id = ensure_certificate(api, private)
-    for identifier, name in ((TEST_APP, "Meowstache testbed"), (WDA, "Meowstache testbed WDA")):
-        make_profile(api, private, identifier, ensure_bundle(api, identifier, name), cert_id, device_id)
-    print("Device, bundle IDs, development certificate and both profiles are ready in the private directory")
+    bundle, display = APPS[args.app]
+    identifiers = [(bundle, f"{display} testbed")]
+    if args.app == "meowstache":
+        identifiers.append((WDA, "Meowstache testbed WDA"))
+    for identifier, name in identifiers:
+        make_profile(api, private, identifier, ensure_bundle(api, identifier, name), cert_id, device_id,
+                     f"{display} testbed ")
+    print("Device, requested bundle profiles and development certificate are ready in the private directory")
 
 
 if __name__ == "__main__":

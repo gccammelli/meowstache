@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import zipfile
 
-from install import inspect_ipa, TEST_APP, validate_profile, WDA
+from install import inspect_ipa, LIBERPET, PANDY, TEST_APP, validate_profile, WDA
 
 
 class InstallationSafety(unittest.TestCase):
@@ -38,6 +38,12 @@ class InstallationSafety(unittest.TestCase):
         profile = deepcopy(self.profile)
         profile["Entitlements"]["application-identifier"] = "OLDPREFIX1." + WDA
         self.check_profile(info=info, profile=profile, expected=WDA)
+
+        for bundle in (PANDY, LIBERPET):
+            info = {"CFBundleIdentifier": bundle}
+            profile = deepcopy(self.profile)
+            profile["Entitlements"]["application-identifier"] = "OLDPREFIX1." + bundle
+            self.check_profile(info=info, profile=profile, expected=bundle)
 
     def test_never_accept_production_or_other_bundle(self):
         for bundle in (TEST_APP.removesuffix(".testbed"), "com.apple.Preferences", WDA):

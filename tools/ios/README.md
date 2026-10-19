@@ -56,6 +56,12 @@ bundle, replacing only its own `Meowstache testbed *` profiles. Its output goes 
 CI builds; `sign.sh` re-signs it as the testbed bundle. Signed IPAs and the
 certificate carry the account holder's real name: never publish them.
 
+The same private certificate and installed Meowstache WDA can test the sibling
+apps without installing another WDA. Use `provision.py --app pandy` or
+`--app liberpet`, then `sign-cammelli-app.sh APP unsigned.ipa` and
+`install.py APP build/ios-private/APP-signed.ipa`. These commands accept only
+the explicit isolated Cammelli test bundle IDs.
+
 ## Installed command paths
 
 From the repository root:
