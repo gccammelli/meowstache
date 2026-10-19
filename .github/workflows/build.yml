@@ -23,16 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
 
@@ -45,7 +45,7 @@ jobs:
           ./gradlew testDebugUnitTest :shared:koverXmlReportDebug
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: shared/build/reports/kover/reportDebug.xml
@@ -66,7 +66,7 @@ jobs:
           script: bash tools/android-smoke.sh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Android UI evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-ui-evidence
@@ -117,7 +117,7 @@ jobs:
 
       - name: Signed release UI evidence
         if: always() && (github.ref == 'refs/heads/local-mode' || startsWith(github.ref, 'refs/tags/v'))
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: signed-android-ui-evidence
           path: build/android-smoke/
@@ -129,7 +129,7 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "meowstache-${GITHUB_REF_NAME}.apk"
           cp app/build/outputs/apk/release/app-release.apk meowstache.apk
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: apk
           path: |
@@ -142,16 +142,16 @@ jobs:
   ios:
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
 
@@ -190,7 +190,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: cp meowstache.ipa "meowstache-${GITHUB_REF_NAME}.ipa"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios
@@ -205,14 +205,14 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: reportDebug.xml
           flags: android-unit
@@ -228,14 +228,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: apk
           path: apk-artifact
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ios
           path: ios-artifact
@@ -251,7 +251,7 @@ jobs:
           git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push -f origin refs/tags/preview-local-mode
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             apk-artifact/meowstache-${{ github.ref_name }}.apk
