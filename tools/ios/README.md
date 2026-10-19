@@ -108,8 +108,10 @@ APPIUM_HOME="$PWD/build/ios-tools/appium" build/ios-tools/node/node_modules/.bin
 build/ios-tools/python/bin/python tools/ios/smoke.py
 ```
 
-The UI harness uses the preinstalled WDA with its exact `.xctrunner` ID. It
-refuses UI commands/captures when the foreground app is not the test app, does
+The UI harness uses the preinstalled WDA with its exact `.xctrunner` ID. Run
+`smoke.py`, `smoke.py pandy` or `smoke.py liberpet` for the corresponding
+isolated test app. It refuses UI commands/captures when the foreground app is
+not the selected test app, does
 not reset app data or automatically accept alerts, and writes private evidence
 under ignored `build/ios-smoke/`. It checks local-demo onboarding/navigation,
 robots, pets, history and a light-setting command/readback. A repeat run can
@@ -136,7 +138,8 @@ privileged RemoteXPC tunnel and loopback-only Appium server, runs the smoke, and
 cleans both processes up. It skips when the phone is absent or not ready. The
 private `iphone-smoke-enabled` marker must contain `true`; logs and evidence
 remain under ignored `build/` paths. This scheduled smoke validates the installed
-test build; installing each new CI candidate is a separate gate.
+test build; installing each new CI candidate is a separate gate. Pass `pandy`
+or `liberpet` to test either sibling app; no argument tests Meowstache.
 
 To validate a new pull-request build, run
 `tools/ios/x1-test-pr.sh PR_NUMBER`. It accepts only an open same-repository
@@ -151,7 +154,7 @@ Appium (as your user) reads its own copy, so copy that file into your user's sam
 path, or WDA launch fails with "RemoteXPC is not available for this session".
 
 iOS doesn't expose the segmented control's selected trait to XCUITest (no
-`Selected` trait on any segment), so the smoke reads the command back from the
+`Selected` trait on any segment), so the Meowstache smoke reads the command back from the
 Controls tile label (`Lights\n<mode>`) and always switches to a different mode.
 
 Official setup references:
