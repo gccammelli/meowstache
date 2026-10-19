@@ -1,10 +1,8 @@
 # Meowstache
 
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
-
 The Litter-Robot 4 is the best self-cleaning litter box around. But its maker now puts basic features behind a subscription, and owners haven't taken it well.
 
-Subscriptions that pay for servers and new features are fine. But **history older than one week**, and alerts that can **save your cat's life** (no litter box visits, or too many), are basic features. They shouldn't be paywalled. My device. My data. This is how enshittification starts, and the Litter-Robot is heading down that path.
+Subscriptions that pay for servers and new features are fine. But **history older than one week**, and alerts that can **save your cat's life** (no litter box visits, or too many), are basic features. They shouldn't be paywalled. My device. My data. This is how enshittification starts, and Whisker is heading down that path.
 
 Meowstache is an unofficial Android app that talks to your robot and gives you:
 
@@ -24,11 +22,14 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ## Download
 
-**[Download the latest APK](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)** (or browse [all releases](https://github.com/gccammelli/meowstache/releases)). An F-Droid listing is on its way. Note that the F-Droid build is signed by F-Droid, so you can't update between the two: pick one.
+### Android
 
-### iPhone (beta)
+**[Download the latest APK](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)**. An F-Droid listing is on its way.
 
-**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [SideStore](https://sidestore.io) (or AltStore), which signs it with your own free Apple ID. No App Store, no account of mine. It runs on a real iPhone (installed with [iloader](https://github.com/nab138/iloader), which handles two-factor Apple IDs); more testers are very welcome. On iOS, alerts are only checked while the app is open: for instant ones, use [Home Assistant's notifications](docs/iphone-notifications.md).
+### iOS
+
+**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [iloader](https://iloader.site/), [SideStore](https://sidestore.io), [Altstore](https://altstore.io/) which signs it with your own free Apple ID. Notifications are only checked while the app is open for now; for instant ones, use [Home Assistant's notifications](docs/iphone-notifications.md).
+
 
 ## Local mode: no cloud at all (preview)
 
@@ -79,3 +80,5 @@ MIT (see `LICENSE`). The Figtree font is under the SIL Open Font License (`LICEN
 ## Disclaimer
 
 This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. Use it at your own risk. In no event shall the authors be liable for any claim, damages or other liability, including damage to your device, loss of data or harm to your pets, arising from the use of this software.
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
