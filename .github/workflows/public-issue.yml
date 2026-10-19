@@ -73,15 +73,15 @@ jobs:
     outputs:
       candidate: ${{ steps.agent.outputs.final-message }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.intake.outputs.base }}
           persist-credentials: false
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
       - name: Store the issue as untrusted data
@@ -113,7 +113,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.intake.outputs.base }}
           persist-credentials: false
@@ -121,11 +121,11 @@ jobs:
         env:
           CANDIDATE: ${{ needs.repair.outputs.candidate }}
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
       - name: Enforce patch boundary
@@ -142,7 +142,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.intake.outputs.base }}
           persist-credentials: false
