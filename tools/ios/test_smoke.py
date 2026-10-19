@@ -50,6 +50,12 @@ class ForegroundGuard(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("Usage:", result.stderr)
 
+    def test_gate_waits_for_a_published_tunnel_and_tracks_its_root_pid(self):
+        gate = Path(__file__).with_name("x1-smoke-gate.sh").read_text()
+        self.assertIn("tunnel.pid", gate)
+        self.assertIn(".tunnels | length > 0", gate)
+        self.assertIn('sudo -n kill "$tunnel_pid"', gate)
+
     def test_launch_waits_for_the_selected_test_app(self):
         bundle = APPS["pandy"][0]
         driver = Driver(bundle)
