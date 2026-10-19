@@ -371,7 +371,7 @@ private fun ControlsTab(r: Robot) {
                 ControlButton(Icons.Filled.Bedtime, "Sleep Mode", if (r.sleepEnabled) "Enabled" else "Disabled", if (r.sleepEnabled) W.Green else W.Icon,
                     Modifier.weight(1f)) { sleep = true }
             }
-            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp).height(1.dp).background(W.Line))
+            Spacer(Modifier.height(24.dp))
             Row {
                 ControlButton(Icons.Filled.Air, "Replace Filter", filterAt?.let { "Replaced ${it.localDate().daysUntil(LocalDate.now())} days ago" },
                     W.Icon, Modifier.weight(1f)) { filter = true }
