@@ -11,3 +11,4 @@
 </ul>
 <p><b>Privacy</b>: you sign in with your Litter-Robot account. Your password goes straight to the official login server and is never stored; the login token is encrypted with the Android Keystore. No analytics, no ads, no third-party servers.</p>
 <p><b>Please note</b>: Meowstache is not affiliated with or endorsed by the manufacturer, and it doesn't replace the official app (setup and some settings still need it). Only the Litter-Robot 4 is supported. The app depends on the manufacturer's proprietary cloud service. It is provided "as is", without warranty of any kind.</p>
+<p>Litter-Robot, SmartScale and LitterHopper are trademarks of Whisker (Automated Pet Care Products, LLC); other names are trademarks of their owners. Meowstache is not affiliated with or endorsed by Whisker.</p>

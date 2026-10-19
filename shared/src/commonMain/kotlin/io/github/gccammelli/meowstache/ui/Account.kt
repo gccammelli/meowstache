@@ -303,7 +303,7 @@ fun AboutScreen(nav: NavHostController) = Screen({ BackTopBar("App Version", { n
                     modifier = Modifier.clickable { ctx.openUrl(releaseNotes(ctx.appVersion)) }.padding(vertical = 16.dp))
             }
         }
-        Text("An unofficial companion app for the Litter-Robot 4 that keeps your pets' full history and adds pet alerts. It doesn't replace the official app and isn't affiliated with its maker.",
+        Text("An unofficial companion app for the Litter-Robot 4 that keeps your pets' full history and adds pet alerts. It doesn't replace the official app and isn't affiliated with its maker.\n\nLitter-Robot, SmartScale and LitterHopper are trademarks of Whisker (Automated Pet Care Products, LLC); other names are trademarks of their owners. Meowstache is not affiliated with or endorsed by Whisker.",
             color = W.Text2, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
     }
 }

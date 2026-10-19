@@ -60,7 +60,7 @@ Have a camera on the litter box? With a Home Assistant automation saving a clip 
 
 ## Before you use it
 
-- It's an independent companion app. It **doesn't replace the official Litter-Robot app**, isn't affiliated with or endorsed by its maker, and some things (setup, adding devices or pets, some settings) still need the official app. Litter-Robot is a trademark of its owner.
+- It's an independent companion app. It **doesn't replace the official Litter-Robot app**, isn't affiliated with or endorsed by its maker, and some things (setup, adding devices or pets, some settings) still need the official app. Litter-Robot, SmartScale and LitterHopper are trademarks of Whisker (Automated Pet Care Products, LLC); other names are trademarks of their owners. Meowstache is not affiliated with or endorsed by Whisker.
 - **Litter-Robot 4 only** with the cloud. Other robots aren't supported yet, so they won't show up (local mode supports what the ESPHome firmware supports).
 - It has only been tested with one LR4. Help testing is very welcome: please open an issue.
 
