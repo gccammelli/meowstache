@@ -10,14 +10,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -25,6 +26,8 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
 
       - name: Test
         run: |
@@ -32,12 +35,11 @@ jobs:
           ./gradlew testDebugUnitTest :shared:koverXmlReportDebug
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: actions/upload-artifact@v4
         with:
-          files: shared/build/reports/kover/reportDebug.xml
-          flags: android-unit
-          fail_ci_if_error: false
-          use_oidc: true
+          name: coverage
+          path: shared/build/reports/kover/reportDebug.xml
+          retention-days: 1
 
       - name: Decode signing key
         if: startsWith(github.ref, 'refs/tags/v')
@@ -66,16 +68,8 @@ jobs:
           name: apk
           path: |
             meowstache-*.apk
-            app/build/outputs/apk/release/*.apk
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            meowstache-${{ github.ref_name }}.apk
             meowstache.apk
-          generate_release_notes: true
+            app/build/outputs/apk/release/*.apk
 
   # iOS: unsigned .ipa (users sign it with their own Apple ID via SideStore/AltStore) plus simulator
   # screenshots, all on GitHub's free macOS runners, so no Mac is needed to build.
@@ -83,6 +77,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -90,6 +86,8 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
 
       - name: Shared tests on the iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test
@@ -120,21 +118,59 @@ jobs:
           xcrun simctl io "$DEV" screenshot screenshots/3-demo-home-dark.png
           xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Meowstache"' --style compact | tail -100 > screenshots/app-log.txt || true
 
+      - name: Name the release IPA
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cp meowstache.ipa "meowstache-${GITHUB_REF_NAME}.ipa"
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ios
           path: |
-            meowstache.ipa
+            meowstache*.ipa
             screenshots/
 
-      - name: Attach .ipa to the GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        # A fixed name too, so releases/latest/download/meowstache.ipa always links the newest version.
-        run: cp meowstache.ipa "meowstache-${GITHUB_REF_NAME}.ipa"
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  coverage:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: reportDebug.xml
+          flags: android-unit
+          fail_ci_if_error: false
+          use_oidc: true
+
+  release:
+    needs: [build, ios]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && needs.ios.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: apk-artifact
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios
+          path: ios-artifact
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
-            meowstache-${{ github.ref_name }}.ipa
-            meowstache.ipa
+            apk-artifact/meowstache-${{ github.ref_name }}.apk
+            apk-artifact/meowstache.apk
+            ios-artifact/meowstache-${{ github.ref_name }}.ipa
+            ios-artifact/meowstache.ipa
+          generate_release_notes: true
