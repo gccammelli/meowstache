@@ -1,5 +1,11 @@
 # Meowstache
 
+[![Build](https://github.com/gccammelli/meowstache/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/gccammelli/meowstache/actions/workflows/build.yml)
+[![Coverage](https://codecov.io/gh/gccammelli/meowstache/graph/badge.svg)](https://codecov.io/gh/gccammelli/meowstache)
+[![Latest release](https://img.shields.io/github/v/release/gccammelli/meowstache)](https://github.com/gccammelli/meowstache/releases/latest)
+[![License](https://img.shields.io/github/license/gccammelli/meowstache)](LICENSE)
+[![Open issues](https://img.shields.io/github/issues/gccammelli/meowstache)](https://github.com/gccammelli/meowstache/issues)
+
 The Litter-Robot 4 is the best self-cleaning litter box around. But its maker now puts basic features behind a subscription, and owners haven't taken it well.
 
 Subscriptions that pay for servers and new features are fine. But **history older than one week**, and alerts that can **save your cat's life** (no litter box visits, or too many), are basic features. They shouldn't be paywalled. My device. My data. This is how enshittification starts, and Whisker is heading down that path.
@@ -21,6 +27,9 @@ Meowstache is an unofficial Android app that talks to your robot and gives you:
 No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app with a made-up robot, two cats and a year of fake history. No account needed. The screenshots above come from the demo.
 
 ## Download
+
+[![Download Android APK](https://img.shields.io/badge/Download-Android_APK-3DDC84?logo=android&logoColor=white)](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.apk)
+[![Download iPhone IPA](https://img.shields.io/badge/Download-iPhone_IPA-000000?logo=apple&logoColor=white)](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)
 
 ### Android
 
@@ -51,6 +60,10 @@ Meowstache is free and always will be. Thanks to your support there's now an **i
 ## Contact
 
 Questions, ideas or press: [meowstache.app@gmail.com](mailto:meowstache.app@gmail.com). Bugs: [GitHub issues](https://github.com/gccammelli/meowstache/issues).
+
+## Contributing
+
+Bug reports, feature requests and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for tests, privacy rules and the required before/after visual evidence for user-facing changes.
 
 ## Credits
 

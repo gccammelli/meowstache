@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "safe": {"type": "boolean"},
+    "reason": {"type": "string"},
+    "summary": {"type": "string"},
+    "tests": {"type": "string"},
+    "patch": {"type": "string"}
+  },
+  "required": ["safe", "reason", "summary", "tests", "patch"],
+  "additionalProperties": false
+}
