@@ -213,17 +213,31 @@ private fun HomeTab(nav: NavHostController) {
         Greeting(s)
         Spacer(Modifier.height(16.dp))
         SectionHeader("Devices") { LayoutGlyph(!devicesGrid) { devicesGrid = !devicesGrid } }
-        if (devicesGrid) Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            s.robots.forEach { r ->
+        if (devicesGrid) s.robots.chunked(2).forEach { robots -> Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            robots.forEach { r ->
                 WCard(Modifier.weight(1f), onClick = { nav.navigate("robot/${r.serial}") }) {
-                    RobotArt(90.dp, Modifier.align(Alignment.CenterHorizontally))
-                    Text(r.name, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    StatusLine(r.status)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RobotArt(44.dp); Spacer(Modifier.width(6.dp))
+                        StatusDot(Color(r.status.second), 16.dp)
+                        Text(r.status.first, color = W.Text, fontSize = 13.sp, maxLines = 2, modifier = Modifier.weight(1f).padding(start = 6.dp))
+                    }
+                    Text(r.name, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Waste:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
+                            LevelBar(r.wastePercent / 100f, wasteColor(r.wastePercent)); Spacer(Modifier.height(8.dp))
+                            Text("${r.wastePercent}%", color = W.Text, fontSize = 13.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Litter:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
+                            LevelBar(litterFraction(r.litterState), litterColor(r.litterState), mid = true); Spacer(Modifier.height(8.dp))
+                            Text(r.litterLabel, color = W.Text, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
-            if (s.robots.size % 2 == 1) Spacer(Modifier.weight(1f))
-        } else s.robots.forEach { RobotCard(it) { nav.navigate("robot/${it.serial}") }; Spacer(Modifier.height(14.dp)) }
-        if (devicesGrid) Spacer(Modifier.height(14.dp))
+            if (robots.size == 1) Spacer(Modifier.weight(1f))
+        }; Spacer(Modifier.height(14.dp)) } else s.robots.forEach { RobotCard(it) { nav.navigate("robot/${it.serial}") }; Spacer(Modifier.height(14.dp)) }
         AddCard("Add a Device")
         Spacer(Modifier.height(16.dp))
         SectionHeader("Pets") { LayoutGlyph(!petsGrid) { petsGrid = !petsGrid } }

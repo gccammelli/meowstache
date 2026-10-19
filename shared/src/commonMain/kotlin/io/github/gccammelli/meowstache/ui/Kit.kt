@@ -420,23 +420,35 @@ fun RobotArt(size: Dp, modifier: Modifier = Modifier) = Canvas(modifier.size(siz
     drawRoundRect(shade, Offset(w * 0.26f, h * 0.77f), Size(w * 0.48f, h * 0.15f), CornerRadius(w * 0.04f), style = Stroke(3f))
 }
 
+fun wasteColor(percent: Int) = when { percent >= 90 -> W.Red; percent >= 70 -> W.Orange; else -> W.Green }
+fun litterFraction(state: String?) = when (state) { "OVERFILL" -> 0.75f; "OPTIMAL" -> 0.5f; "REFILL" -> 0.35f; "LOW" -> 0.2f; "EMPTY" -> 0f; else -> 0.5f }
+fun litterColor(state: String?) = when (state) { "OPTIMAL" -> W.Green; "OVERFILL" -> W.Orange; else -> W.Red }
+
 @Composable
 fun WasteIcon(percent: Int) = Canvas(Modifier.width(32.dp).height(26.dp)) {
     val r = CornerRadius(8f)
     drawRoundRect(W.Gauge, cornerRadius = r)
     val fill = size.height * (percent.coerceIn(0, 100) / 100f)
-    val color = when { percent >= 90 -> W.Red; percent >= 70 -> W.Orange; else -> W.Green }
-    drawRoundRect(color, Offset(0f, size.height - fill), Size(size.width, fill), r)
+    drawRoundRect(wasteColor(percent), Offset(0f, size.height - fill), Size(size.width, fill), r)
 }
 
 @Composable
 fun LitterIcon(state: String?) = Canvas(Modifier.size(28.dp)) {
     drawCircle(W.Gauge)
-    val level = when (state) { "OVERFILL" -> 0.75f; "OPTIMAL" -> 0.5f; "REFILL" -> 0.35f; "LOW" -> 0.2f; "EMPTY" -> 0f; else -> 0.5f }
-    val color = when (state) { "OPTIMAL" -> W.Green; "OVERFILL" -> W.Orange; else -> W.Red }
+    val level = litterFraction(state); val color = litterColor(state)
     clipCircle { drawRect(color, Offset(0f, size.height * (1 - level)), Size(size.width, size.height * level)) }
     drawLine(Color.White, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 4f,
         pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f)))
+}
+
+/** Whisker's tall pill gauge from the two-column device card; [mid] draws the "optimal" tick (litter). */
+@Composable
+fun LevelBar(fraction: Float, color: Color, mid: Boolean = false) = Canvas(Modifier.width(18.dp).height(60.dp)) {
+    val r = CornerRadius(size.width / 2)
+    drawRoundRect(W.Gauge, cornerRadius = r)
+    val fill = size.height * fraction.coerceIn(0f, 1f)
+    drawRoundRect(color, Offset(0f, size.height - fill), Size(size.width, fill), r)
+    if (mid) drawLine(Color.White, Offset(-size.width * 0.5f, size.height / 2), Offset(size.width * 1.5f, size.height / 2), 3f)
 }
 
 private fun DrawScope.clipCircle(block: DrawScope.() -> Unit) {
