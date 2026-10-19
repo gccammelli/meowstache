@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 # A newer push replaces a run still in progress, so an older build never overwrites a newer preview.
 concurrency:
@@ -39,7 +40,16 @@ jobs:
           python3 tools/upstream-lr4.py --self-test
           python3 tools/upstream-lr4.py --verify
           python3 tools/autonomous-android.py self-test
-          ./gradlew testDebugUnitTest
+          python3 .github/scripts/public_issue_patch.py --self-test
+          ./gradlew testDebugUnitTest :shared:koverXmlReportDebug
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: shared/build/reports/kover/reportDebug.xml
+          flags: android-unit
+          fail_ci_if_error: false
+          use_oidc: true
 
       - name: Build isolated Android UI test app
         run: ./gradlew -Pmeowstache.testbed assembleDebug

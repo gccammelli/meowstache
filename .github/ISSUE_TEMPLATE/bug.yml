@@ -1,0 +1,43 @@
+name: Bug report
+description: Tell us about reproducible behaviour that is wrong.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping. Remove credentials, private URLs, device IDs and personal data before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: e.g. v1.0.4
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Phone/OS plus relevant device, firmware, Home Assistant or connection mode.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reliable sequence, including what you expected and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs and visual evidence
+      description: Paste sanitised logs and drag in screenshots or a short video when useful.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed passwords, tokens, private URLs, serial numbers and personal data.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

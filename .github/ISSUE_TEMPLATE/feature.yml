@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a useful, concrete improvement.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and why is the current behaviour insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: Describe the smallest useful outcome, not only a particular implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and examples
+      description: Mention workarounds, comparable apps, sketches or screenshots if useful.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for the same request.
+          required: true
+        - label: This request does not include credentials or personal data.
+          required: true

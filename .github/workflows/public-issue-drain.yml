@@ -1,0 +1,36 @@
+name: Public issue backlog
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: public-issue-backlog
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start only today's remaining bounded attempts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENABLED: ${{ secrets.PUBLIC_ISSUE_AGENT_ENABLED }}
+          REPOSITORY: ${{ github.repository }}
+          DAILY_LIMIT: "2"
+        run: |
+          [[ "$ENABLED" == "true" ]] || exit 0
+          since=$(date -u +%F)
+          used=$(gh api -X GET search/issues -f q="repo:$REPOSITORY is:issue label:agent-attempted updated:>=$since" --jq .total_count)
+          remaining=$((DAILY_LIMIT - used))
+          (( remaining > 0 )) || exit 0
+          gh issue list --repo "$REPOSITORY" --state open --label agent-backlog --limit "$remaining" --json number --jq '.[].number' |
+          while read -r issue; do
+            [[ -n "$issue" ]] || continue
+            gh issue edit "$issue" --repo "$REPOSITORY" --add-label agent-ready
+          done
