@@ -1,7 +1,7 @@
-**Preview: local mode** for Litter-Robots running the community [ESPHome firmware](https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot), read through your own Home Assistant. No cloud. This is {version}, built from the [local-mode](https://github.com/gccammelli/meowstache/tree/local-mode) branch; every push there updates it.
+**Preview** (local mode is in the stable 1.1.0 release too): the newest build of [main](https://github.com/gccammelli/meowstache/tree/main), {version}; every push to main updates it. Local mode reads Litter-Robots running the community [ESPHome firmware](https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot) through your own Home Assistant, with no cloud.
 
 - Always the newest beta: [meowstache-beta.apk](https://github.com/gccammelli/meowstache/releases/download/preview-local-mode/meowstache-beta.apk) and [meowstache-beta.ipa](https://github.com/gccammelli/meowstache/releases/download/preview-local-mode/meowstache-beta.ipa) (links you can share).
-- Android: the `.apk` below. It's signed with a test key, so if you have Meowstache 1.0.x installed, uninstall it first.
+- Android: the `.apk` below. It's signed with a test key, so it won't install over a release build (1.0.x, 1.1.0 or later from Releases/F-Droid): uninstall that first, or stay on releases.
 - iPhone: the `.ipa` below (it follows the Android build by up to an hour), to sideload with SideStore/AltStore.
 - On first launch pick **Local: Home Assistant**, enter your Home Assistant address and a long-lived access token. Or tap **Try the demo** to see it without any hardware.
 - Test rig: [tools/local-mock](https://github.com/gccammelli/meowstache/tree/main/tools/local-mock).
