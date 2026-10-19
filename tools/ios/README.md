@@ -132,6 +132,13 @@ private `iphone-smoke-enabled` marker must contain `true`; logs and evidence
 remain under ignored `build/` paths. This scheduled smoke validates the installed
 test build; installing each new CI candidate is a separate gate.
 
+To validate a new pull-request build, run
+`tools/ios/x1-test-pr.sh PR_NUMBER`. It accepts only an open same-repository
+PR with a successful Build run for its exact head SHA, downloads that run's
+unsigned IPA, signs and installs only the isolated test bundle, runs the same
+physical-phone smoke, and leaves an idempotent evidence comment. It never
+merges, approves or publishes the PR.
+
 Tunnel gotcha: `tunnel-creation` runs as root and records its registry port in
 root's `~/.local/share/appium-xcuitest-driver-nodejs/strongbox/tunnelRegistryPort`.
 Appium (as your user) reads its own copy, so copy that file into your user's same
