@@ -29,10 +29,12 @@ def bumped(text):
     text, count = re.subn(r"versionCode = (\d+)", lambda m: f"versionCode = {int(m[1])+1}", text)
     if count != 1:
         raise ValueError("Expected one Android versionCode")
-    text, count = re.subn(r'versionName = "(\d+\.\d+\.\d+-beta)(\d+)"',
-                         lambda m: f'versionName = "{m[1]}{int(m[2])+1}"', text)
+    def name(m):  # 1.1.0-beta16 → 1.1.0-beta17; after a release, 1.1.0 → 1.1.1-beta1
+        major, minor, patch, beta = m[1], m[2], int(m[3]), m[4]
+        return f'versionName = "{major}.{minor}.{patch}-beta{int(beta)+1}"' if beta else f'versionName = "{major}.{minor}.{patch+1}-beta1"'
+    text, count = re.subn(r'versionName = "(\d+)\.(\d+)\.(\d+)(?:-beta(\d+))?"', name, text)
     if count != 1:
-        raise ValueError("Autonomous releases currently target the local-mode beta series")
+        raise ValueError("Expected one Android versionName like 1.2.3 or 1.2.3-beta4")
     return text
 
 
@@ -82,6 +84,7 @@ def apply(patch, tag):
 def self_test():
     value = 'versionCode = 20\nversionName = "1.1.0-beta16"\n'
     assert bumped(value) == 'versionCode = 21\nversionName = "1.1.0-beta17"\n'
+    assert bumped('versionCode = 21\nversionName = "1.1.0"\n') == 'versionCode = 22\nversionName = "1.1.1-beta1"\n'
     assert ".github/workflows/build.yml" not in ALLOWED
     assert "tools/android-smoke.py" not in ALLOWED
     def diff(path):

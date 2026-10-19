@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Puts a local-mode build on the "preview-local-mode" pre-release, replacing the previous one of the same kind.
+# Puts a main-branch build on the "preview-local-mode" pre-release (name kept so existing links work), replacing the previous one of the same kind.
 #   .github/publish-preview.sh <file> <apk|ipa>
 # Called by .github/workflows/build.yml (GH_TOKEN set); the notes come from .github/preview-notes.md.
 set -euo pipefail

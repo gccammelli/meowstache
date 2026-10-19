@@ -4,7 +4,7 @@
 - Android: the `.apk` below. It's signed with a test key, so if you have Meowstache 1.0.x installed, uninstall it first.
 - iPhone: the `.ipa` below (it follows the Android build by up to an hour), to sideload with SideStore/AltStore.
 - On first launch pick **Local: Home Assistant**, enter your Home Assistant address and a long-lived access token. Or tap **Try the demo** to see it without any hardware.
-- Test rig: [tools/local-mock](https://github.com/gccammelli/meowstache/tree/local-mode/tools/local-mock).
+- Test rig: [tools/local-mock](https://github.com/gccammelli/meowstache/tree/main/tools/local-mock).
 
 **New in beta16:** tapping a "not available" feature explains it is only in Whisker's official app, with a button to hide them all; Account › Show unavailable features brings them back (its ⓘ explains why, and the ESPHome firmware route to full control).
 

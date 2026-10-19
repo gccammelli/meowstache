@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BASE_BRANCH: local-mode
+  BASE_BRANCH: main
 
 jobs:
   intake:

@@ -1,11 +1,11 @@
 # Builds and tests every push and pull request. A "v*" tag also builds the signed APK
 # and publishes it as a GitHub Release, so nobody has to wait for F-Droid.
-# A push to local-mode publishes the preview: the APK as soon as it's built, the .ipa when the iOS job ends.
+# A push to main publishes the preview: the APK as soon as it's built, the .ipa when the iOS job ends.
 name: Build
 
 on:
   push:
-    branches: [main, local-mode]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -82,7 +82,7 @@ jobs:
 
       - name: Decode preview signing key
         # Previews use their own test key (Android's standard debug-key passwords), so they install over each other.
-        if: github.ref == 'refs/heads/local-mode'
+        if: github.ref == 'refs/heads/main'
         env:
           BETA_KEYSTORE_BASE64: ${{ secrets.BETA_KEYSTORE_BASE64 }}
         run: |
@@ -107,7 +107,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Exercise the signed release APK before publication
-        if: github.ref == 'refs/heads/local-mode' || startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -116,7 +116,7 @@ jobs:
           script: bash tools/android-smoke.sh app/build/outputs/apk/release/app-release.apk --production-on-emulator
 
       - name: Signed release UI evidence
-        if: always() && (github.ref == 'refs/heads/local-mode' || startsWith(github.ref, 'refs/tags/v'))
+        if: always() && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v4
         with:
           name: signed-android-ui-evidence
@@ -222,7 +222,7 @@ jobs:
   publish:
     needs: [build, ios]
     if: >-
-      (github.ref == 'refs/heads/local-mode' || startsWith(github.ref, 'refs/tags/v')) &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.build.result == 'success' && needs.ios.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -239,8 +239,8 @@ jobs:
         with:
           name: ios
           path: ios-artifact
-      - name: Publish local-mode previews
-        if: github.ref == 'refs/heads/local-mode'
+      - name: Publish previews
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

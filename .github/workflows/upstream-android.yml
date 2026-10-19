@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: local-mode
+          ref: main
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -201,9 +201,9 @@ jobs:
           git rev-parse HEAD > upstream-pr-head.txt
           # Supply the short-lived token only to git's credential helper, never to candidate code.
           git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' push origin "HEAD:refs/heads/$branch"
-          pr=$(gh pr list --head "$branch" --base local-mode --json url --jq '.[0].url // empty')
+          pr=$(gh pr list --head "$branch" --base main --json url --jq '.[0].url // empty')
           if [[ -z "$pr" ]]; then
-            pr=$(gh pr create --base local-mode --head "$branch" --title "Android: support $TAG" --body-file docs/upstream-lr4.md)
+            pr=$(gh pr create --base main --head "$branch" --title "Android: support $TAG" --body-file docs/upstream-lr4.md)
           fi
           echo "Verified PR: $pr" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

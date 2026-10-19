@@ -22,7 +22,7 @@ For a new release it:
    tests discovery, pets, controls, sleep schedules and tracker management over
    HTTP/WebSocket. Android emulator tests exercise onboarding, local demo,
    devices, history, pets, and a light-setting command/readback through the UI.
-5. Gets a separate Codex review, then creates a verified PR against `local-mode`.
+5. Gets a separate Codex review, then creates a verified PR against `main`.
 6. The X1 gate downloads the already-built test APK without executing candidate
    build code locally, runs it on at least two connected Android phones, and
    merges only the non-networking, non-UI tier when every gate passes. It then
@@ -30,19 +30,18 @@ For a new release it:
    merged code again, builds the signed APK, exercises that exact release APK on
    an emulator, then updates the existing `preview-local-mode` GitHub release.
 
-The automatic release is the **Android local-mode preview**, using the existing
-preview signing key. This does not create stable `v*` tags or promote the beta to
-`main`. The existing iOS workflow is unchanged; iOS does not gate the Android
+The automatic release is the **Android preview** (`preview-local-mode`, built from `main`), using the existing
+preview signing key. It never creates a stable `v*` tag: releases stay a
+maintainer decision. The existing iOS workflow is unchanged; iOS does not gate the Android
 preview. LR3 alpha branches, LR5, prereleases and unreleased upstream commits are
 not tracked by this first pipeline.
 
 ## One-time activation
 
-Land the implementation on `local-mode`. Install the small dispatcher at
-`.github/workflows/upstream-android.yml` on the repository's **default branch**
-(`main`) too: GitHub only schedules workflows present on the default branch.
-The dispatcher starts the full workflow from `local-mode`, which pins the
-candidate to the exact base commit detected at the start.
+Everything lives on `main`, the only long-lived branch (GitHub only schedules
+workflows on the default branch). The workflow pins the candidate to the exact
+`main` commit detected at the start. Between releases `main` carries a beta
+version (`X.Y.Z-betaN`); a stable release is a `vX.Y.Z` tag.
 
 In repository Settings → Secrets and variables → Actions:
 
@@ -112,14 +111,14 @@ maintainer. Known breaking changes that are handled by the app still need
 explicit migration notes; a firmware reset cannot be undone by Meowstache.
 
 A failed candidate leaves the tracked baseline unchanged, so the next daily
-check retries it. A concurrent change to `local-mode` blocks the X1 gate from
+check retries it. A concurrent change to `main` blocks the X1 gate from
 merging the stale candidate; rerun against the new base. Workflow retries use
 distinct bot branches to avoid overwriting a previous candidate. Remove or
 remove the local enable marker before rerunning if a maintainer is investigating
 an existing candidate PR.
 
 If merging succeeded but the subsequent Build failed, rerun **Build** on
-`local-mode`: the baseline already advanced, so detection will not repeat the
+`main`: the baseline already advanced, so detection will not repeat the
 repair. The published Android preview remains the last APK whose release tests
 passed. Older app versions remain recoverable from git/release history.
 
