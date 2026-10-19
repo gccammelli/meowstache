@@ -246,7 +246,7 @@ private fun HistoryTab(r: Robot) {
         Text("Device Activity", color = W.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
         WCard(Modifier.fillMaxWidth()) {
             visible.take(shown).forEach { a -> ActivityRow(a, if (a.value == "catWeight") Repo.petForWeightAct(a) else null, visitMin[a.ts],
-                clipsFor(a.ts, clips).takeIf { a.value == "catWeight" && it.isNotEmpty() }?.let { c -> { play(c) } }) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
+                clipsFor(a.ts, clips, visitMin[a.ts]).takeIf { a.value == "catWeight" && it.isNotEmpty() }?.let { c -> { play(c) } }) { menuFor = a }; Spacer(Modifier.height(10.dp)) }
             if (visible.isEmpty()) Text(if (s.historyLoading) "Loading full history…" else "No activity yet", color = W.Muted)
             if (visible.size > shown) Text("See More", color = W.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clickable { shown += 25 }.padding(12.dp))
@@ -371,7 +371,7 @@ private fun ControlsTab(r: Robot) {
                 ControlButton(Icons.Filled.Bedtime, "Sleep Mode", if (r.sleepEnabled) "Enabled" else "Disabled", if (r.sleepEnabled) W.Green else W.Icon,
                     Modifier.weight(1f)) { sleep = true }
             }
-            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp).height(1.dp).background(W.Line))
+            Spacer(Modifier.height(24.dp))
             Row {
                 ControlButton(Icons.Filled.Air, "Replace Filter", filterAt?.let { "Replaced ${it.localDate().daysUntil(LocalDate.now())} days ago" },
                     W.Icon, Modifier.weight(1f)) { filter = true }
