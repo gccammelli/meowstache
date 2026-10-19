@@ -40,6 +40,25 @@ been validated with a paid profile or an installed WDA on this iOS version.
    create the RemoteXPC tunnel, then establish an Appium session. Prove a launch,
    screenshot and tap before enabling scheduled agent runs.
 
+## Signing from Linux (App Store Connect API)
+
+Steps 2–5 above are scripted. Create a Team API key once (App Store Connect →
+Users and Access → Integrations → App Store Connect API, role **Admin**), and keep
+the `.p8`, Key ID and Issuer ID in the private credential directory, never here.
+
+```sh
+export IOS_TEAM_ID=... ASC_KEY_ID=... ASC_ISSUER_ID=... ASC_KEY=/private/AuthKey_XXXX.p8
+build/ios-tools/python/bin/python tools/ios/provision.py   # phone, bundle IDs, cert, two profiles
+bash tools/ios/sign.sh /path/to/unsigned/meowstache.ipa    # → build/ios-private/{app,wda}-signed.ipa
+```
+
+`provision.py` registers the one USB phone, both test bundle IDs, an Apple
+Development certificate (key generated locally) and one development profile per
+bundle, replacing only its own `Meowstache testbed *` profiles. Its output goes to
+`IOS_PRIVATE_DIR` (default outside the repository). The unsigned `.ipa` is the one
+CI builds; `sign.sh` re-signs it as the testbed bundle. Signed IPAs and the
+certificate carry the account holder's real name: never publish them.
+
 ## Installed command paths
 
 From the repository root:
