@@ -22,11 +22,13 @@ jobs:
   intake:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
-      issues: read
+      issues: write
     outputs:
       run: ${{ steps.gate.outputs.run }}
       base: ${{ steps.gate.outputs.base }}
+      over-budget: ${{ steps.gate.outputs.over-budget }}
     steps:
       - id: gate
         env:
@@ -37,6 +39,14 @@ jobs:
         run: |
           echo "run=false" >> "$GITHUB_OUTPUT"
           [[ "$ENABLED" == "true" ]] || exit 0
+          # At most two agent runs per UTC day, however they were started; a third goes back in the queue.
+          today=$(gh api "repos/$REPOSITORY/actions/workflows/public-issue.yml/runs?created=>=$(date -u +%F)&per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)] | length")
+          if (( today >= 2 )); then
+            gh issue edit "$ISSUE" --repo "$REPOSITORY" --remove-label agent-attempted,agent-working --add-label agent-backlog
+            echo "over-budget=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           issue_json=$(gh issue view "$ISSUE" --repo "$REPOSITORY" --json body,labels,state)
           [[ $(jq -r .state <<< "$issue_json") == OPEN ]] || exit 0
           jq -e '[.labels[].name] | index("agent-working")' <<< "$issue_json" >/dev/null || exit 0
@@ -49,7 +59,7 @@ jobs:
 
   intake-declined:
     needs: intake
-    if: always() && needs.intake.outputs.run != 'true'
+    if: always() && needs.intake.outputs.run != 'true' && needs.intake.outputs.over-budget != 'true'
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -73,15 +83,15 @@ jobs:
     outputs:
       candidate: ${{ steps.agent.outputs.final-message }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.intake.outputs.base }}
           persist-credentials: false
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-disabled: true
       - name: Store the issue as untrusted data
@@ -96,7 +106,7 @@ jobs:
         run: test -n "$OPENAI_API_KEY" || { echo '::error::Missing OPENAI_API_KEY'; exit 1; }
       - name: Assess and prepare a bounded patch
         id: agent
-        uses: openai/codex-action@v1
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/public-issue.md
@@ -113,7 +123,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.intake.outputs.base }}
           persist-credentials: false
@@ -121,11 +131,11 @@ jobs:
         env:
           CANDIDATE: ${{ needs.repair.outputs.candidate }}
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-disabled: true
       - name: Enforce patch boundary
@@ -142,7 +152,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.intake.outputs.base }}
           persist-credentials: false

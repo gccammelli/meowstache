@@ -121,7 +121,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", choices=APPS, default="meowstache")
     args = parser.parse_args()
-    private = Path(os.environ.get("IOS_PRIVATE_DIR", Path.home() / "secrets/max/apple")).expanduser()
+    private_dir = os.environ.get("IOS_PRIVATE_DIR")
+    if not private_dir:
+        raise SystemExit("Set IOS_PRIVATE_DIR to the private Apple signing folder")
+    private = Path(private_dir).expanduser()
     private.mkdir(mode=0o700, parents=True, exist_ok=True)
     key_file = Path(os.environ["ASC_KEY"]).expanduser()
     api = Api(token(os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"], key_file.read_bytes()))

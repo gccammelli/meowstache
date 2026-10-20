@@ -22,11 +22,11 @@ jobs:
       version: ${{ steps.upstream.outputs.version }}
       base: ${{ steps.base.outputs.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - id: base
@@ -42,18 +42,18 @@ jobs:
     outputs:
       candidate: ${{ steps.repair.outputs.final-message }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.detect.outputs.base }}
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-disabled: true
       - name: Prepare release evidence and beta version
@@ -71,7 +71,7 @@ jobs:
         run: test -n "$OPENAI_API_KEY" || { echo '::error::Add repository secret OPENAI_API_KEY to enable autonomous repairs'; exit 1; }
       - name: Adapt to upstream firmware
         id: repair
-        uses: openai/codex-action@v1
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/upstream-android.md
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.detect.outputs.base }}
           persist-credentials: false
@@ -93,14 +93,14 @@ jobs:
         env:
           CANDIDATE: ${{ needs.repair.outputs.candidate }}
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-disabled: true
       - name: Apply only the permitted patch and independently verify upstream evidence
@@ -112,7 +112,7 @@ jobs:
           python3 tools/upstream-lr4.py --self-test
           python3 tools/upstream-lr4.py --verify
           ./gradlew testDebugUnitTest -Pmeowstache.testbed assembleDebug
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: false
       - name: Real Home Assistant and upstream cat tracker integration
@@ -120,13 +120,13 @@ jobs:
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
       - name: Android UI and command round trip
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           arch: x86_64
           disable-animations: true
           script: bash tools/android-smoke.sh app/build/outputs/apk/debug/app-debug.apk
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: upstream-android-evidence
@@ -144,7 +144,7 @@ jobs:
     outputs:
       verdict: ${{ steps.review.outputs.final-message }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.detect.outputs.base }}
           persist-credentials: false
@@ -154,7 +154,7 @@ jobs:
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
       - name: Independent release review
         id: review
-        uses: openai/codex-action@v1
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/upstream-review.md
@@ -176,7 +176,7 @@ jobs:
         env:
           VERDICT: ${{ needs.review.outputs.verdict }}
         run: printf '%s' "$VERDICT" | jq -e '.approved == true'
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.detect.outputs.base }}
           persist-credentials: false
@@ -184,7 +184,7 @@ jobs:
         env:
           CANDIDATE: ${{ needs.repair.outputs.candidate }}
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - name: Revalidate and create the verified PR
@@ -206,7 +206,7 @@ jobs:
             pr=$(gh pr create --base main --head "$branch" --title "Android: support $TAG" --body-file docs/upstream-lr4.md)
           fi
           echo "Verified PR: $pr" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: upstream-pr-head
           path: upstream-pr-head.txt

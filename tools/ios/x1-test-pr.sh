@@ -5,9 +5,11 @@ set -euo pipefail
 [[ $# == 1 && $1 =~ ^[1-9][0-9]*$ ]] || { echo "usage: $0 PR_NUMBER" >&2; exit 2; }
 pr=$1
 project_dir=$(cd "$(dirname "$0")/../.." && pwd)
-private="${IOS_PRIVATE_DIR:-$HOME/secrets/max/apple}"
+private="${IOS_PRIVATE_DIR:?Set IOS_PRIVATE_DIR to the private Apple signing folder}"
 cd "$project_dir"
 
+# The Cammelli token, explicitly: gh's own active account on this machine may be someone else's.
+export GH_TOKEN="${GH_TOKEN:-$(<"${CAMMELLI_CREDENTIALS_DIR:-$HOME/secrets/gccammelli}/github-token")}"
 [[ $(gh api user --jq .login) == gccammelli ]] || { echo "GitHub must be authenticated as gccammelli" >&2; exit 1; }
 read -r state cross owner repo sha < <(
   gh pr view "$pr" --repo gccammelli/meowstache \

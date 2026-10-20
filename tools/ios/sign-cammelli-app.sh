@@ -9,7 +9,7 @@ case $1 in
 esac
 
 project_dir=$(cd "$(dirname "$0")/../.." && pwd)
-private="${IOS_PRIVATE_DIR:-$HOME/secrets/max/apple}"
+private="${IOS_PRIVATE_DIR:?Set IOS_PRIVATE_DIR to the private Apple signing folder}"
 out="$project_dir/build/ios-private"
 mkdir -p -m 700 "$out"
 "$project_dir/build/ios-tools/signing/zsign" -q \

@@ -6,6 +6,8 @@ repo=gccammelli/meowstache
 root=$(cd "$(dirname "$0")/.." && pwd)
 : "${CAMMELLI_CREDENTIALS_DIR:?Set CAMMELLI_CREDENTIALS_DIR to the local Cammelli credential store}"
 enable_file="$CAMMELLI_CREDENTIALS_DIR/meowstache-auto-merge-enabled"
+# The Cammelli token, explicitly: gh's own active account on this machine may be someone else's.
+export GH_TOKEN="${GH_TOKEN:-$(<"$CAMMELLI_CREDENTIALS_DIR/github-token")}"
 
 [[ $(gh api user --jq .login) == gccammelli ]] || exit 1
 [[ -f "$enable_file" && $(<"$enable_file") == true ]] || exit 0
@@ -35,7 +37,7 @@ while IFS= read -r encoded; do
   run=$(gh api "repos/$repo/actions/runs/$run_id")
   jq -e --arg repo "$repo" '
     .name == "Upstream Android" and .conclusion == "success" and
-    .event == "workflow_dispatch" and .path == ".github/workflows/upstream-android.yml" and
+    (.event == "workflow_dispatch" or .event == "schedule") and .path == ".github/workflows/upstream-android.yml" and
     .head_branch == "main" and .head_repository.full_name == $repo
   ' <<< "$run" >/dev/null || continue
   parent=$(gh api "repos/$repo/commits/$head" --jq '.parents[0].sha')
