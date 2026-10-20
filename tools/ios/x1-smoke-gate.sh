@@ -9,7 +9,7 @@ app=${1:-meowstache}
   echo "Usage: $0 [meowstache|pandy|liberpet]" >&2
   exit 2
 }
-private="${IOS_PRIVATE_DIR:-$HOME/secrets/max/apple}"
+private="${IOS_PRIVATE_DIR:?Set IOS_PRIVATE_DIR to the private Apple signing folder}"
 runtime="$project_dir/build/ios-private"
 appium="$project_dir/build/ios-tools/node/node_modules/.bin/appium"
 python="$project_dir/build/ios-tools/python/bin/python"

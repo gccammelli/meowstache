@@ -4,7 +4,7 @@
 set -euo pipefail
 project_dir=$(cd "$(dirname "$0")/../.." && pwd)
 ios_tools="$project_dir/build/ios-tools"
-private="${IOS_PRIVATE_DIR:-$HOME/secrets/max/apple}"
+private="${IOS_PRIVATE_DIR:?Set IOS_PRIVATE_DIR to the private Apple signing folder}"
 out="$project_dir/build/ios-private"
 app=io.github.gccammelli.meowstache.testbed
 mkdir -p -m 700 "$out"

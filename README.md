@@ -41,7 +41,7 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ## Local mode: no cloud at all (preview)
 
-Robots running Joseph DiGiovanni's community [ESPHome firmware](https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot) don't talk to the manufacturer's cloud. Meowstache can read them through your own **Home Assistant** instead: pick **Local: Home Assistant** on the first screen, enter your Home Assistant address and a long-lived access token, and every screen (history, insights, alerts, controls) works from your own network.
+Robots running Joseph DiGiovanni's community [ESPHome firmware](https://codeberg.org/Joseph-DiGiovanni/esphome-litter-robot) don't talk to the manufacturer's cloud. Meowstache can read them through your own **Home Assistant** instead: pick **Local: Home Assistant** on the first screen, enter your Home Assistant address and a long-lived access token, and every screen (history, insights, alerts, controls) works from your own network. Use a dedicated non-administrator Home Assistant user for the app's token; it can do whatever that user can.
 
 - Several robots are fine. Cats come from the firmware's cat tracker: enable the "Cat N" entities in Home Assistant and rename them to your cats' names (as the firmware's guide says). A cat with the same name on two robots becomes one pet.
 - Give a cat a photo by setting a picture on its weight sensor in Home Assistant.
@@ -68,11 +68,10 @@ Have a camera on the litter box? With a Home Assistant automation saving a clip 
 
 Meowstache is free and always will be. Thanks to your support there's now an **iPhone beta** and a real iPhone to test it on. Donations keep development going and pay for the hardware it needs: test devices, an ESP programmer and parts for the open-firmware (local) work.
 
-[Buy me a coffee](https://buymeacoffee.com/cammelli)
-
 ## Privacy & security
 
 - You sign in with your normal Litter-Robot account, because the robot's data and controls only exist in the manufacturer's cloud.
+- Cloud mode uses Whisker's unofficial, reverse-engineered cloud API, which may break at any time, and Whisker's terms of use do not permit third-party clients. Local mode (Home Assistant plus community firmware) avoids Whisker's servers entirely.
 - Your password goes straight to the official login server over HTTPS and is **never stored**. The app only keeps a login token, encrypted with a key held in the phone's secure hardware (Android Keystore), and leaves it out of backups.
 - The app only talks to the robot's official servers (or, in local mode, only to your Home Assistant). There are no analytics and no third parties. Details: [PRIVACY.md](PRIVACY.md).
 
@@ -95,3 +94,5 @@ MIT (see `LICENSE`). The Figtree font is under the SIL Open Font License (`LICEN
 ## Disclaimer
 
 This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. Use it at your own risk. In no event shall the authors be liable for any claim, damages or other liability, including damage to your device, loss of data or harm to your pets, arising from the use of this software.
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
