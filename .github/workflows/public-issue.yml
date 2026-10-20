@@ -21,6 +21,10 @@ env:
 jobs:
   intake:
     runs-on: ubuntu-latest
+    # One intake at a time, so two runs can't both count fewer than two and start.
+    concurrency:
+      group: public-issue-intake
+      cancel-in-progress: false
     permissions:
       actions: read
       contents: read

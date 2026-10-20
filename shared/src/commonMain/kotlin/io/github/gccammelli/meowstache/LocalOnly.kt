@@ -11,8 +11,9 @@ import io.ktor.client.plugins.plugin
  */
 fun isLocalHost(host: String): Boolean {
     val h = host.lowercase().removePrefix("[").removeSuffix("]").removeSuffix(".")
-    if (h == "localhost" || '.' !in h && ':' !in h) return true // a bare name only resolves on the LAN
-    if (listOf(".local", ".lan", ".home", ".home.arpa", ".internal", ".localdomain").any { h.endsWith(it) }) return true
+    // Only names that can't be registered publicly: mDNS (.local) and the home-network zone. Others (a bare name, .lan,
+    // a router's own domain) could be answered by any DNS server, so they need https or the IP address.
+    if (h == "localhost" || h.endsWith(".local") || h.endsWith(".home.arpa")) return true
     if (':' in h) return h == "::1" || h.startsWith("fe80:") || h.startsWith("fc") || h.startsWith("fd")
     val ip = h.split('.').map { it.toIntOrNull() ?: return false }.takeIf { it.size == 4 && it.all { n -> n in 0..255 } } ?: return false
     return ip[0] == 10 || ip[0] == 127 || ip[0] == 192 && ip[1] == 168 || ip[0] == 172 && ip[1] in 16..31 ||
