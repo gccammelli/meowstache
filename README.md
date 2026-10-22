@@ -37,7 +37,18 @@ No Litter-Robot? Tap **Try the demo** on the welcome screen to explore the app w
 
 ### iOS
 
-**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [iloader](https://iloader.site/), [SideStore](https://sidestore.io), [Altstore](https://altstore.io/) which signs it with your own free Apple ID. Notifications are only checked while the app is open for now; for instant ones, use [Home Assistant's notifications](docs/iphone-notifications.md).
+**[Download the latest .ipa](https://github.com/gccammelli/meowstache/releases/latest/download/meowstache.ipa)** and install it with [iloader](https://iloader.site/), [SideStore](https://sidestore.io), or [AltStore](https://altstore.io/), which signs it with your own Apple ID.
+
+Meowstache displays native iOS notifications, but it has no push server, so it currently checks for new alerts only
+while the app is open. In **cloud mode**, keep the official Whisker app installed for immediate background robot
+notifications and use Meowstache alongside it for its additional history, insights and alerts. If you use **Home
+Assistant or local mode**, its companion app can deliver instant notifications instead; see the
+[iPhone notification guide](docs/iphone-notifications.md).
+
+Making Meowstache deliver cloud-mode alerts while closed would require operating a trusted service that watches for
+robot changes and sends them through Apple Push Notification service. iOS background refresh is not reliable enough
+to replace that service, and requiring users' Whisker access tokens to leave their phones would be a significant
+privacy and security trade-off.
 
 ## Local mode: no cloud at all (preview)
 
