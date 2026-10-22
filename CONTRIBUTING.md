@@ -23,4 +23,4 @@ For security vulnerabilities, do not open a public issue. Follow [SECURITY.md](S
 
 All checks must pass. Generated or AI-assisted contributions are welcome, but the author remains responsible for understanding, testing and clearly describing the result.
 
-Automation and contributors may prepare pull requests, but must never merge them. The maintainer reviews and explicitly approves every merge into a protected project branch.
+External contributors, and automation acting on public or third-party requests, may prepare pull requests but may not merge them. Pull requests initiated by the maintainer or by first-party Cammelli maintenance automation may merge after the required checks pass without a separate approval step.
