@@ -50,6 +50,11 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }
+        androidUnitTest.dependencies {
+            implementation("org.robolectric:robolectric:4.16.1")
+            implementation("androidx.compose.ui:ui-test-junit4:1.9.3")
+            implementation("androidx.compose.ui:ui-test-manifest:1.9.3")
+        }
     }
 }
 
@@ -57,6 +62,7 @@ android {
     namespace = "io.github.gccammelli.meowstache.shared"
     compileSdk = 36
     defaultConfig { minSdk = 26 }
+    testOptions.unitTests.isIncludeAndroidResources = true
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
