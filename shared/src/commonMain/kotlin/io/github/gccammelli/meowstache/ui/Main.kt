@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Male
+import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Park
@@ -585,6 +586,12 @@ private fun DevicesTab(nav: NavHostController) {
 
 // ---------- Pets ----------
 
+internal fun petGenderIcon(gender: String?) = when (gender) {
+    "FEMALE" -> Icons.Filled.Female
+    "MALE" -> Icons.Filled.Male
+    else -> Icons.Filled.Pets
+}
+
 fun petSummary(p: Pet) = listOfNotNull(p.breed, listOfNotNull(p.environment, p.genderLabel.ifBlank { null }).joinToString(" ").ifBlank { null },
     Repo.ageLabel(p).ifBlank { null }).joinToString(" • ")
 
@@ -647,7 +654,7 @@ fun PetProfileScreen(nav: NavHostController, id: String) {
                 Spacer(Modifier.height(14.dp))
                 MetricCard("Visits", "Yesterday’s Visits", "${dayReadings(r, yesterday).size} visits") { nav.navigate("visits/$id") }
                 Spacer(Modifier.height(14.dp))
-                InfoRow(Icons.Filled.Male, "Gender", p.fixedLabel)
+                InfoRow(petGenderIcon(p.gender), "Gender", p.fixedLabel)
                 InfoRow(Icons.Filled.Scale, "Reference weight", Repo.weight(p.referenceLbs))
                 InfoRow(Icons.Filled.Cake, "Birthday", p.birthday?.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) ?: "—")
                 InfoRow(Icons.Filled.CalendarMonth, "Age", Repo.ageLabel(p, long = true).ifBlank { "—" })
