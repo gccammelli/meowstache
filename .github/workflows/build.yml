@@ -217,7 +217,7 @@ jobs:
         with:
           files: reportDebug.xml
           flags: android-unit
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           use_oidc: true
 
   publish:
