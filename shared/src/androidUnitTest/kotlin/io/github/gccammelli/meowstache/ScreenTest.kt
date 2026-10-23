@@ -400,9 +400,12 @@ class ScreenTest {
     @Test fun recapListsTheVisitsForTheSelectedDay() {
         val st=Repo.state.value
         val p=st.pets.first()
-        val now=nowMs()
-        Repo.state.value=st.copy(weights=mapOf(p.id to (0..5).map { Reading(now-it*60_000,10.0) }))
+        val day = java.time.LocalDate.now()
+        // Subtracting five minutes from wall-clock time puts visits on yesterday near midnight.
+        val noon = day.atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        Repo.state.value=st.copy(weights=mapOf(p.id to (0..5).map { Reading(noon-it*60_000,10.0) }))
         show("Daily Recap") { DailyRecapScreen(it) }
+        compose.onNodeWithText("%02d".format(day.dayOfMonth)).performClick()
         compose.onAllNodesWithText("Visit Breakdown").onFirst().assertExists()
         compose.onAllNodesWithText("See More").onFirst().performScrollTo().performClick()
         compose.onAllNodesWithText("Visit Breakdown").onFirst().assertExists()
