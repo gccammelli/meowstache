@@ -36,6 +36,12 @@ maintainer decision. The existing iOS workflow is unchanged; iOS does not gate t
 preview. LR3 alpha branches, LR5, prereleases and unreleased upstream commits are
 not tracked by this first pipeline.
 
+Set the repository Actions variable `HOLD_RELEASES` to `true` to hold both
+preview and tagged-release publication while allowing builds, tests and merges.
+It is currently enabled pending F-Droid publication. Remove the variable, or set
+it to `false`, only when the maintainer lifts the hold; then explicitly rerun the
+desired build to publish it.
+
 ## One-time activation
 
 Everything lives on `main`, the only long-lived branch (GitHub only schedules
