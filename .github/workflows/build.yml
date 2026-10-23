@@ -42,7 +42,7 @@ jobs:
           python3 tools/upstream-lr4.py --verify
           python3 tools/autonomous-android.py self-test
           python3 .github/scripts/public_issue_patch.py --self-test
-          ./gradlew testDebugUnitTest :shared:koverXmlReportDebug
+          ./gradlew testDebugUnitTest :shared:koverXmlReportDebug :shared:koverVerifyDebug
 
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

@@ -64,12 +64,11 @@ class RequestGuard(private val perMinute: Int = 60, private val perHour: Int = 4
     }
 }
 
-class Api(private val prefs: KeyValue, private val secrets: SecretStore) {
-    private val http = HttpClient {
+class Api(private val prefs: KeyValue, private val secrets: SecretStore, private val http: HttpClient = HttpClient {
         install(HttpTimeout) { connectTimeoutMillis = 20_000; requestTimeoutMillis = 120_000; socketTimeoutMillis = 120_000 }
         install(WebSockets)
         expectSuccess = false
-    }
+    }) {
     private val lock = Mutex()
     /** Every request to Whisker's servers goes through this; see [RequestGuard]. */
     val guard = RequestGuard()

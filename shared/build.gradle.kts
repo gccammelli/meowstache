@@ -49,8 +49,10 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
         androidUnitTest.dependencies {
+            implementation("androidx.arch.core:core-runtime:2.2.0")
             implementation("org.robolectric:robolectric:4.16.1")
             implementation("androidx.compose.ui:ui-test-junit4:1.9.3")
             implementation("androidx.compose.ui:ui-test-manifest:1.9.3")
@@ -71,4 +73,19 @@ android {
 
 compose.resources {
     packageOfResClass = "io.github.gccammelli.meowstache.res"
+}
+
+// Keep the full debug application above the agreed line-coverage floor.
+kover {
+    reports {
+        filters {
+            excludes {
+                // Compose-generated accessors/collectors; no handwritten code uses this package.
+                packages("io.github.gccammelli.meowstache.res")
+            }
+        }
+        variant("debug") {
+            verify { rule { minBound(90) } }
+        }
+    }
 }
