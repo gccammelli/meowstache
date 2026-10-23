@@ -68,7 +68,7 @@ class Api(private val prefs: KeyValue, private val secrets: SecretStore, private
         install(HttpTimeout) { connectTimeoutMillis = 20_000; requestTimeoutMillis = 120_000; socketTimeoutMillis = 120_000 }
         install(WebSockets)
         expectSuccess = false
-    }) {
+    }, private val realtimeEndpoint: String = "wss://lr4.iothings.site/graphql/realtime") {
     private val lock = Mutex()
     /** Every request to Whisker's servers goes through this; see [RequestGuard]. */
     val guard = RequestGuard()
@@ -184,7 +184,7 @@ class Api(private val prefs: KeyValue, private val secrets: SecretStore, private
         fun b64(text: String) = Base64.Default.encode(text.encodeToByteArray()).encodeURLParameter()
         val header = b64(buildJsonObject { put("Authorization", auth); put("host", "lr4.iothings.site") }.toString())
         guard.take()
-        http.webSocket("wss://lr4.iothings.site/graphql/realtime?header=$header&payload=${b64("{}")}",
+        http.webSocket("$realtimeEndpoint?header=$header&payload=${b64("{}")}",
             request = { header("Sec-WebSocket-Protocol", "graphql-ws") }) {
             val query = "subscription GetLR4ByUser(\$userId: String!) { litterRobot4StateSubscriptionByUser(userId: \$userId) { robots $LR4_MODEL } }"
             send(Frame.Text(buildJsonObject {
