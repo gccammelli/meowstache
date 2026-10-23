@@ -30,7 +30,7 @@ class RepositoryNetworkTest {
         val calls = mutableListOf<String>()
         val token = "header." + Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode("""{"mid":"owner","exp":4102444800}""".encodeToByteArray()) + ".sig"
         val secrets = object : SecretStore {
-            val values = mutableMapOf("id" to token)
+            val values = mutableMapOf("id" to token,"refresh" to "test-refresh")
             override fun get(key: String) = values[key]
             override fun set(key: String, value: String?) { if(value == null) values.remove(key) else values[key]=value }
             override fun clear() = values.clear()
@@ -56,8 +56,20 @@ class RepositoryNetworkTest {
         }).use { http ->
             Repo::class.java.getDeclaredField("api").apply { isAccessible = true }.set(Repo, Api(storage.auth, secrets, http))
             try {
+                val prefs=Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue
+                prefs.putString("owner","different-previous-owner")
+                Repo.addMessage(Message(nowMs(),"Previous owner","Private history"))
+                Repo.updateLocal { it.copy(overrides=mapOf(1L to "old-pet")) }
                 Repo.onLogin()
+                assertTrue(Repo.messages.value.isEmpty())
+                assertTrue(Repo.local.value.overrides.isEmpty())
+                assertTrue(Repo.canCheckAlerts)
                 Repo.refresh()
+                storage.auth.putString("email","test@example.test")
+                assertEquals("test@example.test",Repo.email())
+                val requestCount=calls.size
+                Repo.refreshIfStale()
+                assertEquals(requestCount,calls.size)
                 val st = Repo.state.value
                 assertEquals("Test", st.firstName); assertEquals(1, st.robots.size)
                 assertTrue(st.weights.getValue(pet.id).any { it.lbs == 10.0 })

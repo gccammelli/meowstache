@@ -204,7 +204,7 @@ class LocalFormTest {
         assertFalse(Repo.local.value.overrides.containsKey(key))
         compose.onNodeWithContentDescription("Show menu").performClick()
         compose.onNodeWithText("Reassign weight").performClick()
-        compose.onNodeWithText(st.pets.last().name,substring=false).performClick()
+        compose.onAllNodesWithText(st.pets.last().name,substring=false).filter(hasClickAction()).onFirst().performClick()
         assertEquals(st.pets.last().id,Repo.local.value.overrides[key])
     }
 

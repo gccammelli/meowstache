@@ -3,6 +3,7 @@ package io.github.gccammelli.meowstache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.activity.ComponentActivity
 import android.graphics.Bitmap
@@ -32,9 +33,12 @@ class ScreenTest {
     private var savedBackup: String? = null
     private var saveError: Throwable? = null
     private var openedFile: Result<String>? = null
+    private var instantSyncs = 0
     private var alertsScheduled = 0
     private var notified: List<PetAlert>? = null
     private val platform = object : PlatformUi {
+        override val canInstantNotifications = true
+        override fun syncInstantNotifications() { instantSyncs++ }
         override val appId = "test"
         override val appVersion = "1.1.0"
         override val buildNumber = 1
@@ -481,6 +485,112 @@ class ScreenTest {
         compose.onNodeWithText("Firmware details").performClick()
         compose.onNodeWithText("Firmware Information").assertExists()
         compose.onNodeWithText("OK").performClick()
+    }
+
+    @Test fun unavailableFeatureDialogCanHideUnsupportedControls() {
+        show("Home") { MainScreen(it); UnavailableDialog() }
+        compose.runOnIdle { askUnavailable("Network setup") }
+        compose.onNodeWithText("Only in Whisker's app").assertExists()
+        compose.onNodeWithText("Network setup is only available", substring=true).assertExists()
+        compose.onNodeWithText("Hide unavailable features").performClick()
+        assertFalse(Repo.showUnavailable.value); assertNull(Repo.askUnavailable.value)
+    }
+
+    @Test fun chartTapSelectsTheReadingAndAreaChartsRenderMissingValuesAndPatterns() {
+        val displayed = mutableListOf<Double>()
+        compose.setContent { AppTheme {
+            androidx.compose.foundation.layout.Column {
+                Chart(listOf(1.0,3.0,2.0),listOf("First","Middle","Last"),ChartKind.LINE,
+                    modifier=androidx.compose.ui.Modifier.then(androidx.compose.ui.Modifier.testTag("readings")),
+                    marks=listOf(1,0,-1),tooltip={ displayed += it; "Reading $it" })
+                Chart(listOf(1.0,null,4.0,2.0),listOf("A","B","C","D"),ChartKind.AREA)
+                LevelBar(2f,W.Teal,mid=true)
+            }
+        } }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithTag("readings").performTouchInput { click(androidx.compose.ui.geometry.Offset(width*.12f,height*.5f)) }
+        compose.runOnIdle {
+            val view=compose.activity.window.decorView
+            view.draw(Canvas(Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)))
+        }
+        assertTrue(displayed.contains(1.0))
+    }
+
+    @Test fun freshAlertsAreDeduplicatedAndUpdatesDoNotCreateDuplicateInboxMessages() {
+        val first=PetAlert("test-first",pet.id,"A visit","First reading",slot="visit")
+        assertEquals(listOf(first),Repo.takeFresh(listOf(first)))
+        assertTrue(Repo.takeFresh(listOf(first)).isEmpty())
+        val update=first.copy(key="test-second",body="Visit duration now known",update=true)
+        Repo.takeFresh(listOf(update))
+        assertEquals(1,Repo.messages.value.size)
+        assertTrue(Repo.sentAlertKeys().containsAll(listOf(first.key,update.key)))
+    }
+
+    @Test fun robotUsageTopicsCanBeExpandedAndChangedIndependently() {
+        show("Notifications") { NotificationsScreen(it) }
+        val heading=compose.onNodeWithText("Robot Usage").fetchSemanticsNode().boundsInRoot
+        compose.onNode(SemanticsMatcher("Usage expander") { node ->
+            node.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) &&
+                kotlin.math.abs(node.boundsInRoot.center.y-heading.center.y)<2 && node.boundsInRoot.right<heading.left
+        }).performClick()
+        if (!Repo.alerts.value.robot.usage) {
+            compose.onNodeWithText("Robot Usage").performScrollTo()
+            val label=compose.onNodeWithText("Robot Usage").fetchSemanticsNode().boundsInRoot
+            compose.onNode(isToggleable() and SemanticsMatcher("Usage switch") { node ->
+                kotlin.math.abs(node.boundsInRoot.center.y-label.center.y)<2 && node.boundsInRoot.left>label.right
+            }).performClick()
+        }
+        val before=Repo.alerts.value.robot
+        for(label in listOf("Drawer full","Low Litter","Clean Cycle Complete","Clean Cycle Interrupted","Cat Visit Summary","Maintenance Tips")) {
+            compose.onNodeWithText(label).performScrollTo()
+            val bounds=compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot
+            compose.onNode(isToggleable() and SemanticsMatcher("Switch for $label") { node ->
+                kotlin.math.abs(node.boundsInRoot.center.y-bounds.center.y)<2 && node.boundsInRoot.left>bounds.right
+            }).performClick()
+        }
+        val after=Repo.alerts.value.robot
+        assertEquals(!before.drawerFull,after.drawerFull); assertEquals(!before.lowLitter,after.lowLitter)
+        assertEquals(!before.cycleComplete,after.cycleComplete); assertEquals(!before.cycleInterrupted,after.cycleInterrupted)
+        assertEquals(!before.visits,after.visits); assertEquals(!before.maintenance,after.maintenance)
+        compose.onNodeWithText("Cat Detected In Drawer").performScrollTo().assertExists()
+        assertTrue(alertsScheduled>=6)
+    }
+
+    @Test fun localDiagnosticsRequireConfirmationAndReportSaveFailures() {
+        Repo.setMode(true); Repo.startDemo()
+        show("Account") { AccountScreen(it) }
+        compose.onNodeWithText("Home Assistant diagnostics").performScrollTo().performClick()
+        assertNull(savedBackup)
+        compose.onNodeWithText("Save file").performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Diagnostics saved") }
+        assertTrue(savedBackup!!.contains("1.1.0"))
+        saveError=java.io.IOException("storage unavailable")
+        compose.onAllNodesWithText("Home Assistant diagnostics").filter(hasClickAction()).onFirst().performScrollTo().performClick()
+        compose.onNodeWithText("Save file").performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Couldn't save: storage unavailable") }
+        compose.onNodeWithText("Meowstache Privacy").performScrollTo().performClick()
+        compose.onNodeWithText("ESPHome firmware").performClick()
+        assertTrue(urls.last().contains("esphome-litter-robot"))
+        compose.onNodeWithText("ESPHome firmware").assertDoesNotExist()
+        compose.onNodeWithText(Repo.email()).performScrollTo().performClick()
+        compose.onNodeWithText("To disconnect for good",substring=true).assertExists()
+    }
+
+    @Test fun instantNotificationChoicePersistsAndExplainsItsBackgroundConnection() {
+        (Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue).putBoolean("demo",false)
+        Repo.setMode(false); Repo.setInstantNotifications(false)
+        show("Notifications") { NotificationsScreen(it) }
+        compose.onNodeWithText("Instant Notifications").performScrollTo()
+        val label=compose.onNodeWithText("Instant Notifications").fetchSemanticsNode().boundsInRoot
+        compose.onNode(isToggleable() and SemanticsMatcher("Instant notification switch") { node ->
+            kotlin.math.abs(node.boundsInRoot.center.y-label.center.y)<2 && node.boundsInRoot.left>label.right
+        }).performClick()
+        assertTrue(Repo.instantNotifications); assertEquals(1,instantSyncs)
+        compose.onNodeWithText("as soon as your robot changes",substring=true).assertExists()
+        compose.onNode(hasContentDescription("Info") and SemanticsMatcher("Instant notification help") { node ->
+            kotlin.math.abs(node.boundsInRoot.center.y-label.center.y)<2
+        }).performClick()
+        compose.onNodeWithText("every 2 minutes",substring=true).assertExists()
     }
 
 }

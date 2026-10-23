@@ -110,7 +110,7 @@ This software is provided "as is", without warranty of any kind, express or impl
 
 ### Coverage checks
 
-CI enforces at least **90% line coverage** for the shared Android debug code, using Kover. The only exclusion is the Compose-generated `io.github.gccammelli.meowstache.res` package: resource accessors and collectors produced under `shared/build/generated/compose/resourceGenerator/`. These are generated resource lookup tables and wrappers, rather than application decisions. Handwritten UI, demo behavior, networking, storage, encryption and device logic remain measured. Run the full automated suite and gate locally:
+CI enforces at least **95% line coverage** for the shared Android debug code, using Kover. The only exclusion is the Compose-generated `io.github.gccammelli.meowstache.res` package: resource accessors and collectors produced under `shared/build/generated/compose/resourceGenerator/`. These are generated resource lookup tables and wrappers, rather than application decisions. Handwritten UI, demo behavior, networking, storage, encryption and device logic remain measured. Run the full automated suite and gate locally:
 
 ```sh
 ./gradlew testDebugUnitTest :shared:koverXmlReportDebug :shared:koverVerifyDebug
