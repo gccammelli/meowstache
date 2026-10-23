@@ -10,6 +10,10 @@ import android.graphics.Canvas
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import io.github.gccammelli.meowstache.ui.*
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.*
+import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -23,17 +27,24 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val messages = mutableListOf<String>()
+    private val urls = mutableListOf<String>()
+    private var savedBackup: String? = null
+    private var saveError: Throwable? = null
+    private var openedFile: Result<String>? = null
+    private var alertsScheduled = 0
+    private var notified: List<PetAlert>? = null
     private val platform = object : PlatformUi {
         override val appId = "test"
         override val appVersion = "1.1.0"
         override val buildNumber = 1
-        override fun openUrl(url: String) = Unit
-        override fun toast(message: String) = Unit
-        override fun shareFile(mime: String, name: String, text: String) = Unit
-        override fun saveFile(suggestedName: String, text: String, done: (Throwable?) -> Unit) = done(null)
-        override fun openFile(done: (Result<String>?) -> Unit) = done(null)
-        override fun scheduleAlerts() = Unit
-        override fun notifyNew(alerts: List<PetAlert>) = Unit
+        override fun openUrl(url: String) { urls += url }
+        override fun toast(message: String) { messages += message }
+        override fun shareFile(mime: String, name: String, text: String) { sharedCsv = text }
+        override fun saveFile(suggestedName: String, text: String, done: (Throwable?) -> Unit) { savedBackup = text; done(saveError) }
+        override fun openFile(done: (Result<String>?) -> Unit) = done(openedFile)
+        override fun scheduleAlerts() { alertsScheduled++ }
+        override fun notifyNew(alerts: List<PetAlert>) { notified = alerts }
     }
     private class Settings : KeyValue {
         private val data = mutableMapOf<String, Any>()
@@ -47,6 +58,7 @@ class ScreenTest {
         override fun putStringSet(key: String, value: Set<String>) { data[key] = value }
         override fun clear() = data.clear()
     }
+    private var sharedCsv: String? = null
     private val pet get() = Repo.state.value.pets.first()
     private val robot get() = Repo.state.value.robots.first()
     private companion object { val settings = Settings() }
@@ -63,6 +75,12 @@ class ScreenTest {
             override fun delete(name: String) = Unit
         }))
         Repo.setMode(false)
+        Repo.updateLocal { LocalData() }
+        Repo.setAlerts(AlertSettings())
+        Repo.clearMessages()
+        Repo.setUnits("kg"); Repo.setDecimals(1)
+        Repo.setShowUnavailable(true); Repo.setShowBlogs(false)
+        Repo.askUnavailable.value = null
         Repo.startDemo()
     }
 
@@ -163,4 +181,306 @@ class ScreenTest {
         compose.mainClock.advanceTimeBy(500)
         compose.onAllNodesWithText("Meowstache Privacy").onLast().assertIsDisplayed()
     }
+    @Test fun messageCenterReadsAndClearsSavedAlerts() {
+        Repo.clearMessages()
+        listOf("Drawer full", "Maintenance tip", "Cat visit", "Firmware update").forEach { Repo.addMessage(Message(nowMs(), it, "Test body")) }
+        show("Message Center") { MessageCenterScreen(it) }
+        assertTrue(Repo.messages.value.all { it.read })
+        compose.onNodeWithText("Clear all").performClick()
+        compose.onNodeWithText("No messages.", substring = true).assertExists()
+        assertTrue(Repo.messages.value.isEmpty())
+    }
+
+    @Test fun unitsAndPrecisionPersistUserSelection() {
+        Repo.setUnits("kg"); Repo.setDecimals(1)
+        show("Measurement Units") { UnitsScreen(it) }
+        compose.onNodeWithText("Imperial").performClick()
+        assertEquals("lb", Repo.units.value)
+        compose.onNodeWithText(Repo.weight(10.8, 2)).performClick()
+        assertEquals(2, Repo.decimals.value)
+        compose.onNodeWithText("Metric").performClick()
+        assertEquals("kg", settings.getString("units"))
+    }
+
+    @Test fun regionChoiceChangesShopDestination() {
+        show("Region") { RegionScreen(it) }
+        for (region in Repo.regions) {
+            compose.onNodeWithText(Repo.region()).performClick()
+            compose.onAllNodesWithText(region).onLast().performClick()
+            compose.onNodeWithText("Save").performClick()
+            assertEquals(region, Repo.region())
+            assertTrue(Repo.shopUrl().startsWith("https://"))
+        }
+    }
+
+    @Test fun loginInformationShowsAccountBoundary() {
+        show("Account") { AccountScreen(it) }
+        compose.onNodeWithText("Login Information").performClick()
+        compose.onNodeWithText("Signed in as", substring = true).assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+    }
+
+    @Test fun litterSettingsSurviveBackupAndRestore() = runBlocking<Unit> {
+        val serial = robot.serial
+        Repo.updateLocal { it.copy(litter = mapOf(serial to Litter("Test brand", "Clay"))) }
+        val backup = Repo.exportBackup()
+        Repo.updateLocal { it.copy(litter = emptyMap()) }
+        Repo.importBackup(backup)
+        assertEquals(Litter("Test brand", "Clay"), Repo.local.value.litter[serial])
+    }
+
+    @Test fun resetScoopsChangesOnlyLocalBaseline() {
+        show("Device Settings") { DeviceSettingsScreen(it, robot.serial) }
+        compose.onNodeWithText("Reset Scoops Saved").performScrollTo().performClick()
+        compose.onNodeWithText("Reset Scoops Saved?").assertExists()
+        compose.onNodeWithText("Reset").performClick()
+        assertEquals(0, Repo.scoopsSaved(robot))
+    }
+
+    @Test fun notificationTargetShowsEditableWeight() {
+        show("Notifications") { NotificationsScreen(it) }
+        compose.onNodeWithText(pet.name).performScrollTo().performClick()
+        compose.onNodeWithText("Target weight", substring = true).assertExists()
+        compose.onNodeWithText("Save").performClick()
+        assertTrue(Repo.alerts.value.targets.containsKey(pet.id))
+    }
+
+    @Test fun backupMergesHistoryAndRejectsWrongApplicationOrFutureVersion() = runBlocking<Unit> {
+        val before = Repo.state.value
+        val backup = Repo.exportBackup()
+        Repo.state.value = before.copy(weights = emptyMap(), acts = emptyMap())
+        Repo.importBackup(backup)
+        assertEquals(before.weights, Repo.state.value.weights)
+        assertEquals(before.acts, Repo.state.value.acts)
+        try { Repo.importBackup(backup.replace("meowstache", "other-app")); fail("Wrong application accepted") } catch (_: IllegalArgumentException) { }
+        try { Repo.importBackup(backup.replace("\"version\":1", "\"version\":999")); fail("Future backup accepted") } catch (_: IllegalArgumentException) { }
+    }
+
+    @Test fun settingsAndAlertDeduplicationRoundTrip() {
+        Repo.setShowBlogs(true); assertTrue(Repo.showBlogs.value)
+        Repo.setShowUnavailable(false); assertFalse(Repo.showUnavailable.value)
+        Repo.setInstantNotifications(true); assertTrue(Repo.instantNotifications)
+        Repo.acceptIntro(); assertTrue(Repo.introAccepted)
+        Repo.markSent(listOf("one", "two")); assertEquals(setOf("one", "two"), Repo.sentAlertKeys())
+        settings.putString("firmwareCheckedAt", null)
+        assertTrue(Repo.firmwareCheckDue()); assertFalse(Repo.firmwareCheckDue())
+        Repo.updateLocal { LocalData() }
+        Repo.reassign(123L, pet.id); assertEquals(pet.id, Repo.state.value.overrides[123L])
+        for ((signal,label) in listOf(null to "Unknown", -55 to "Good", -65 to "Fair", -90 to "Poor")) assertEquals(label, Repo.signal(signal))
+    }
+
+    @Test fun demoCommandsCannotOperateARealRobot() = runBlocking<Unit> {
+        assertTrue(Repo.command(robot, "startCycle").isFailure)
+        assertTrue(Repo.rename(robot, "New name").isFailure)
+        assertTrue(Repo.toggleHopper(robot, true).isFailure)
+        assertTrue(Repo.triggerFirmwareUpdate(robot).isFailure)
+        assertTrue(Repo.latestFirmware(robot)!!.contains("Up to date"))
+        assertTrue(Repo.setTrackerWeight(pet, 10.0).isFailure)
+        assertTrue(Repo.resetTracker(pet).isFailure)
+        assertTrue(Repo.addPet("Another", 10.0, setOf(robot.serial)).isFailure)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun localDemoRepositoryKeepsPetHistoryThroughRenaming() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Repo.setMode(true); Repo.startDemo(); Repo.refresh()
+            val r = Repo.state.value.robots.first()
+            val p = Repo.state.value.pets.first()
+            assertTrue(Repo.command(r,"setClumpTime","{\"clumpTime\":10}").isSuccess)
+            assertTrue(Repo.rename(r,"Renamed robot").isSuccess)
+            assertTrue(Repo.toggleHopper(r,true).isSuccess)
+            assertTrue(Repo.setSleep(r,"Saturday",true,1320,420).isSuccess)
+            assertTrue(Repo.setTrackerWeight(p,10.0).isSuccess)
+            assertTrue(Repo.resetTracker(p).isSuccess)
+            Repo.updateLocal { it.copy(petNotes=mapOf(p.id to PetNotes(adoptionDetails="Shelter"))) }
+            Repo.reassign(123,p.id)
+            assertTrue(Repo.renamePet(p,"Renamed cat").isSuccess)
+            val id = haPetId("Renamed cat")
+            assertEquals("Shelter",Repo.local.value.petNotes[id]?.adoptionDetails)
+            assertEquals(id,Repo.local.value.overrides[123])
+            assertTrue(Repo.haDiagnostics("test").contains("mapped"))
+            assertTrue(Repo.latestFirmware(r)!!.contains("ESPHome"))
+            assertTrue(Repo.triggerFirmwareUpdate(r).isFailure)
+        } finally { Repo.logout(); Dispatchers.resetMain() }
+    }
+
+    private fun localHome() {
+        val snap = runBlocking { LocalHa(FakeHomeAssistant()).load(nowMs()-365L*86_400_000) }
+        Repo.setMode(true)
+        Repo.state.value=AppState(robots=snap.robots,pets=snap.pets,weights=snap.weights,acts=snap.acts)
+    }
+
+    @Test fun localSleepShowsEachDayAndTimeEditor() {
+        localHome()
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("Controls").performClick()
+        compose.onNodeWithText("Sleep Mode").performScrollTo().performClick()
+        compose.onNodeWithText("Mon").assertExists()
+        val sleep = robot.raw.o("weekdaySleepModeEnabled")?.o("Monday")?.i("sleepTime") ?: 1320
+        compose.onAllNodesWithText("%02d:%02d".format(sleep/60,sleep%60)).onFirst().performClick()
+        compose.onNodeWithText("Monday sleep time").assertExists()
+        compose.onAllNodesWithText("Cancel").onLast().performClick()
+    }
+
+    @Test fun localSettingsExplainDisabledFirmwareEntities() {
+        localHome()
+        val last = Repo.state.value.robots.last()
+        show("Device Settings") { DeviceSettingsScreen(it,last.serial) }
+        compose.onNodeWithText("More controls in Home Assistant").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun profileNotesCanBeReviewedAndChanged() {
+        show(pet.name) { PetProfileScreen(it,pet.id) }
+        compose.onNodeWithText("Adoption Details").performScrollTo().performClick()
+        compose.onNodeWithText("Shelter/Rescue").performClick()
+        assertEquals("Shelter/Rescue",Repo.local.value.petNotes[pet.id]?.adoptionDetails)
+        compose.onNodeWithText("Feeding Time").performScrollTo().performClick()
+        compose.onNodeWithText("Free Feeding").performClick()
+        assertEquals("Free Feeding",Repo.local.value.petNotes[pet.id]?.feedingTime)
+    }
+
+    @Test fun acceptedIntroReachesCloudLoginAndLocalWelcome() {
+        Repo.logout(); Repo.setMode(false); Repo.acceptIntro()
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme { Root() } } }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("Register").assertExists()
+        compose.onNodeWithText("Login").performClick()
+        compose.onNodeWithText("Email").assertExists()
+        compose.onNodeWithText("Forgot password?").performClick()
+    }
+
+    @Test fun cloudControlsRequireConfirmationBeforeResetOrReplacingFilter() {
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("Controls").performClick()
+        compose.onNodeWithText("Reset Robot").performScrollTo().performClick()
+        compose.onNodeWithText("Reset robot?").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Replace Filter").performScrollTo().performClick()
+        compose.onNodeWithText("Replaced").performClick()
+        assertTrue(Repo.local.value.filterAt.containsKey(robot.serial))
+    }
+
+    @Test fun homeDeviceLayoutCanShowACompactGrid() {
+        show("Home") { MainScreen(it) }
+        compose.onAllNodesWithText("Devices").onFirst().onParent().onChildren().filter(hasClickAction()).onLast().performClick()
+        compose.onNodeWithText("Waste:").assertExists()
+        compose.runOnIdle {
+            val view=compose.activity.window.decorView
+            view.draw(Canvas(Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)))
+        }
+    }
+
+    @Test fun visitHistoryCanBeExportedAsCsv() {
+        show("${pet.name}’s Insights") { PetInsightsScreen(it,pet.id) }
+        compose.onNodeWithText("Export full history (CSV)").performScrollTo().performClick()
+        assertTrue(sharedCsv!!.startsWith("timestamp,weight_lbs,weight_kg,duration_min\n"))
+        assertTrue(sharedCsv!!.lines().size > 1)
+    }
+
+    @Test fun recapSettingsControlReminderTimeAndPatternAlerts() {
+        show("Daily Recap") { DailyRecapScreen(it) }
+        compose.onNodeWithContentDescription("Recap settings").performClick()
+        compose.onNodeWithText("Recap notifications").assertExists()
+        if(!Repo.alerts.value.recapEnabled) compose.onAllNodes(isToggleable()).onFirst().performClick()
+        compose.onNodeWithText(hourLabel(9)).performClick()
+        assertEquals(9,Repo.alerts.value.recapHour)
+        val patterns=Repo.alerts.value.patternsEnabled
+        compose.onAllNodes(isToggleable()).onLast().performClick()
+        assertEquals(!patterns,Repo.alerts.value.patternsEnabled)
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Previous week").performClick()
+        compose.onNodeWithContentDescription("Next week").performClick()
+    }
+
+    @Test fun recapListsTheVisitsForTheSelectedDay() {
+        val st=Repo.state.value
+        val p=st.pets.first()
+        val now=nowMs()
+        Repo.state.value=st.copy(weights=mapOf(p.id to (0..5).map { Reading(now-it*60_000,10.0) }))
+        show("Daily Recap") { DailyRecapScreen(it) }
+        compose.onAllNodesWithText("Visit Breakdown").onFirst().assertExists()
+        compose.onAllNodesWithText("See More").onFirst().performScrollTo().performClick()
+        compose.onAllNodesWithText("Visit Breakdown").onFirst().assertExists()
+    }
+
+    @Test fun backupAndRestoreActionsReportSuccessCancellationAndFailures() {
+        show("Account") { AccountScreen(it) }
+        compose.onNodeWithText("Back up history").performScrollTo().performClick()
+        assertTrue(savedBackup!!.contains("meowstache")); assertEquals("History backed up", messages.last())
+        saveError = java.io.IOException("disk full")
+        compose.onNodeWithText("Back up history").performClick()
+        assertEquals("Backup failed: disk full", messages.last())
+        compose.onNodeWithText("Restore history").performScrollTo().performClick()
+        assertEquals(2, messages.size) // Cancelling the picker must not report a restore.
+        openedFile = Result.success(savedBackup!!)
+        compose.onNodeWithText("Restore history").performClick()
+        compose.waitForIdle()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it.startsWith("Restored ·") } }
+        openedFile = Result.success("not a backup")
+        compose.onNodeWithText("Restore history").performClick()
+        compose.waitForIdle()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.last().startsWith("Restore failed:") }
+        openedFile = Result.failure(java.io.IOException("file unavailable"))
+        compose.onNodeWithText("Restore history").performClick()
+        compose.waitForIdle()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.last() == "Restore failed: file unavailable" }
+    }
+
+    @Test fun accountLinksUseTheSelectedRegionalShopAndExplainUnavailableFeatures() {
+        Repo.updateLocal { it.copy(region = "United Kingdom") }
+        show("Account") { AccountScreen(it) }
+        for (label in listOf("Addresses", "Payment Methods", "Referral Dashboard", "Orders", "Subscriptions", "Returns", "Release Notes")) {
+            compose.onNodeWithText(label).performScrollTo().performClick()
+        }
+        assertTrue(urls.contains(Repo.storeUrl("customer/address/")))
+        assertTrue(urls.last().endsWith("/tag/v1.1.0"))
+        compose.onNodeWithContentDescription("Info").performScrollTo().performClick()
+        compose.onNodeWithText("Unavailable features").assertExists()
+        compose.onNodeWithText("About the firmware").performClick()
+        assertTrue(urls.last().contains("esphome-litter-robot"))
+        compose.onNodeWithText("OK").performClick()
+        for (label in listOf("Email Meowstache", "Report a Meowstache Issue", "Litter-Robot Support", "Litter-Robot FAQ", "Buy me a coffee", "Litter-Robot 4 Guide")) {
+            compose.onNodeWithText(label).performScrollTo().performClick()
+        }
+        assertTrue(urls.any { it.startsWith("mailto:") })
+        assertTrue(urls.any { it.endsWith("/issues") })
+    }
+
+    @Test fun notificationChoicesPersistAndScheduleChecksAndCanDisableATarget() {
+        show("Notifications") { NotificationsScreen(it) }
+        fun toggle(label: String) {
+            compose.onNodeWithText(label).performScrollTo()
+            val index = listOf("No litter box visit", "Too many visits", "Unusual patterns", "Daily recap").indexOf(label)
+            compose.onAllNodes(isToggleable()).filter(hasAnySibling(hasText("Pet Alerts")))[index].performClick()
+            compose.waitForIdle()
+        }
+        toggle("No litter box visit")
+        compose.onNodeWithText("3 days").performScrollTo().performClick()
+        assertEquals(3, Repo.alerts.value.noVisitDays)
+        toggle("Too many visits")
+        assertTrue("Too many visits not enabled: ${Repo.alerts.value}", Repo.alerts.value.tooManyEnabled)
+        compose.onNodeWithText("12").performScrollTo().performClick()
+        assertEquals(12, Repo.alerts.value.tooManyVisits)
+        toggle("Unusual patterns")
+        toggle("Daily recap")
+        compose.onNodeWithText(hourLabel(10)).performScrollTo().performClick()
+        assertEquals(10, Repo.alerts.value.recapHour)
+        compose.onNodeWithText(pet.name).performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText(pet.name).performClick()
+        compose.onNodeWithText("Turn off").performClick()
+        assertFalse(Repo.alerts.value.targets.containsKey(pet.id))
+        compose.onNodeWithText("Check now").performScrollTo().performClick()
+        assertNotNull(notified); assertTrue(alertsScheduled >= 8)
+        assertTrue(messages.last().contains("report") || messages.last().contains("alert(s)"))
+    }
+
+    @Test fun firmwareDetailsAndAboutLinksAreReachable() {
+        show("Firmware Updates") { FirmwareScreen(it) }
+        compose.onNodeWithText("Firmware details").performClick()
+        compose.onNodeWithText("Firmware Information").assertExists()
+        compose.onNodeWithText("OK").performClick()
+    }
+
 }

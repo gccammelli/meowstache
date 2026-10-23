@@ -107,3 +107,13 @@ MIT (see `LICENSE`). The Figtree font is under the SIL Open Font License (`LICEN
 This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. Use it at your own risk. In no event shall the authors be liable for any claim, damages or other liability, including damage to your device, loss of data or harm to your pets, arising from the use of this software.
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/cammelli)
+
+### Coverage checks
+
+CI enforces at least **90% line coverage** for the shared Android debug code, using Kover. The only exclusion is the Compose-generated `io.github.gccammelli.meowstache.res` package: resource accessors and collectors produced under `shared/build/generated/compose/resourceGenerator/`. These are generated resource lookup tables and wrappers, rather than application decisions. Handwritten UI, demo behavior, networking, storage, encryption and device logic remain measured. Run the full automated suite and gate locally:
+
+```sh
+./gradlew testDebugUnitTest :shared:koverXmlReportDebug :shared:koverVerifyDebug
+```
+
+The report is `shared/build/reports/kover/reportDebug.xml`. Tests include simulated service boundaries and Robolectric screens; physical devices and iOS execution are separate checks.
