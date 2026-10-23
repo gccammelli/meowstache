@@ -14,6 +14,8 @@ import io.github.gccammelli.meowstache.ui.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.*
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -92,9 +94,71 @@ class ScreenTest {
         compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme { content(rememberNavController()) } } }
         compose.onAllNodesWithText(title).onFirst().assertIsDisplayed()
         compose.runOnIdle {
-            val view = compose.activity.window.decorView
-            view.draw(Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)))
+            android.view.inspector.WindowInspector.getGlobalWindowViews().forEach { view ->
+                if (view.width > 0 && view.height > 0) view.draw(Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)))
+            }
         }
+    }
+
+    private fun robotValues(vararg values: Pair<String, String?>) {
+        val raw=robot.raw.toMutableMap()
+        for ((key,value) in values) if(value==null) raw.remove(key) else raw[key]=JsonPrimitive(value)
+        Repo.state.value=Repo.state.value.copy(robots=listOf(Robot(JsonObject(raw))))
+    }
+
+    @Test fun hopperStatesExplainEnableDisableAndUnavailableHardware() {
+        robotValues("hopperStatus" to "DISABLED","isHopperRemoved" to "false")
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        for ((status,label,action) in listOf(Triple("DISABLED","Disabled","Enable"),Triple("READY","Ready","Disable"),
+            Triple("EMPTY","Empty","Disable"),Triple("LITTER_LOW","Empty","Disable"),Triple(null,"Not installed","Disable"),
+            Triple("unknown-fault","Fault","Disable"))) {
+            compose.runOnIdle { robotValues("hopperStatus" to status) }
+            compose.onNodeWithText("LitterHopper™").performScrollTo().performClick()
+            compose.onNodeWithText("Status: $label",substring=true).assertExists()
+            compose.onNodeWithText(action,substring=false).assertExists()
+            compose.onNodeWithText("Cancel").performClick()
+        }
+        compose.onNodeWithText("LitterHopper™").performClick()
+        compose.onNodeWithText("Disable",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it.startsWith("Failed:") } }
+    }
+
+    @Test fun statusInformationAndOddPetCountsRemainReachable() {
+        Repo.state.value=Repo.state.value.copy(pets=listOf(pet))
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithContentDescription("Info").performClick()
+        compose.onNodeWithText("Every completed clean cycle",substring=true).assertExists()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("How SmartScale works").performClick()
+        compose.onNodeWithText("The Litter-Robot weighs your cat",substring=true).assertExists()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText(pet.name).assertExists()
+    }
+
+    @Test fun poweredOffAndLockedRobotControlsUseTheCorrectConfirmation() {
+        robotValues("unitPowerStatus" to "OFF","isKeypadLockout" to "true")
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("Controls").performClick()
+        compose.onNodeWithText("Power",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Turn on?").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Panel Lock").performClick()
+        compose.onNodeWithText("Unlock panel?").assertExists()
+        compose.onNodeWithText("Unlock",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it.startsWith("Command failed:") } }
+    }
+
+    @Test fun cycleDelayHonorsBoundsAndSendsOnlyAChangedValue() {
+        robotValues("cleanCycleWaitTime" to "3")
+        show("Device Settings") { DeviceSettingsScreen(it,robot.serial) }
+        compose.onNodeWithText("Cycle Delay").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Shorter").assertIsNotEnabled()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
+        repeat(27) { compose.onNodeWithContentDescription("Longer").performClick() }
+        compose.onNodeWithContentDescription("Longer").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Shorter").performClick()
+        compose.onNodeWithText("Save").assertIsEnabled().performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it.startsWith("Failed:") } }
     }
 
     @Test fun mainShowsHome() = show("Home") { MainScreen(it) }

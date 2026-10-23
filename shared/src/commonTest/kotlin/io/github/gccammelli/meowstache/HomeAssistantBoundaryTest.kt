@@ -11,6 +11,32 @@ class HomeAssistantBoundaryTest {
         return haRobotJson(registry, values.filterValues { it != null }.mapValues { buildJsonObject { put("state", it.value) } })
     }
 
+    @Test fun everySupportedControlMapsToItsOwnServiceAndValue() = runTest {
+        val r=LocalHa(FakeHomeAssistant()).load(nowMs()-86_400_000).robots.first()
+        val controls=listOf(
+            Triple("shortResetPress","button.reset","press"),Triple("powerOn","switch.power","turn_on"),
+            Triple("powerOff","switch.power","turn_off"),Triple("keyPadLockOutOn","switch.control_panel_lockout","turn_on"),
+            Triple("keyPadLockOutOff","switch.control_panel_lockout","turn_off"),Triple("replaceFilter","button.replace_filter","press"),
+            Triple("hopperOn","switch.hopper","turn_on"),Triple("hopperOff","switch.hopper","turn_off"))
+        for ((command,role,service) in controls) {
+            val call=haCommand(r,command,null)
+            assertEquals(role.substringBefore('.'),call.first); assertEquals(service,call.second)
+            assertEquals(r.raw.o("haEntities")!!.s(role),call.third.s("entity_id"))
+        }
+        for ((command,option) in listOf("nightLightModeOn" to "On","nightLightModeOff" to "Off","nightLightModeAuto" to "Auto",
+            "panelBrightnessLow" to "Low","panelBrightnessMed" to "Medium","panelBrightnessHigh" to "High")) {
+            val call=haCommand(r,command,null)
+            assertEquals("select" to "select_option",call.first to call.second); assertEquals(option,call.third.s("option"))
+        }
+        for ((power,level) in listOf(25 to "Low",26 to "Medium",50 to "Medium",51 to "High")) {
+            assertEquals(level,haCommand(r,"setNightLightValue","""{"nightLightPower":$power}""").third.s("option"))
+        }
+        assertEquals("15",haCommand(r,"setClumpTime","""{"clumpTime":15}""").third.s("value"))
+        assertFailsWith<ApiException> { haCommand(r,"setClumpTime",null) }
+        val legacy=Robot(robot(mapOf("switch.night_light" to "off")))
+        assertEquals("turn_on",haCommand(legacy,"nightLightModeOn",null).second)
+    }
+
     @Test fun statusMappingKeepsUnknownAndFaultStatesExplicit() {
         val statuses = listOf("Ready" to "ROBOT_IDLE", "Sleeping" to "ROBOT_IDLE", "Cat detected" to "ROBOT_CAT_DETECT",
             "Waiting to cycle" to "ROBOT_CAT_DETECT_DELAY", "Clean cycle in progress" to "ROBOT_CLEAN", "Cycle interrupted" to "ROBOT_CLEAN",

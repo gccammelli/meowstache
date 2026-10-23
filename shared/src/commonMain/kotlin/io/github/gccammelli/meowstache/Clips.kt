@@ -19,7 +19,9 @@ private val CLIP_NAME = Regex("""(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})
 
 /** The UTC time in a clip's file name, or null for other files. */
 fun clipTime(name: String): Long? = CLIP_NAME.find(name)?.destructured?.let { (y, mo, d, h, mi, s) ->
-    LocalDateTime(y.toInt(), mo.toInt(), d.toInt(), h.toInt(), mi.toInt(), s.toInt()).toInstant(TimeZone.UTC).toEpochMilliseconds()
+    runCatching {
+        LocalDateTime(y.toInt(), mo.toInt(), d.toInt(), h.toInt(), mi.toInt(), s.toInt()).toInstant(TimeZone.UTC).toEpochMilliseconds()
+    }.getOrNull()
 }
 
 /**
