@@ -130,10 +130,11 @@ class HomeAssistantBoundaryTest {
         var devices = "[]"
         var entities = "[]"
         var states = "[]"
+        var history = "[]"
         val paths = mutableListOf<String>()
         override suspend fun get(path: String): String {
             paths += path
-            return when { path == "/api/states" -> states; path.startsWith("/api/history/") -> "[]"; else -> throw ApiException("Missing optional endpoint") }
+            return when { path == "/api/states" -> states; path.startsWith("/api/history/") -> history; else -> throw ApiException("Missing optional endpoint") }
         }
         override suspend fun post(path: String, body: String) = error("No service command expected")
         override suspend fun ws(commands: List<JsonObject>) = commands.map { command ->
@@ -188,5 +189,49 @@ class HomeAssistantBoundaryTest {
         assertEquals("Shared", cat.name); assertEquals(10.0, cat.referenceLbs)
         assertEquals("https://home.example/local/cat.jpg", cat.raw.s("s3ImageURL"))
         assertEquals(2, cat.haSlots().size); assertTrue(result.weights.getValue(cat.id).isEmpty())
+    }
+
+    @Test fun temporaryTrackerFailuresAreRetriedBeforeAnExistingSlotIsReused() = runTest {
+        val demo=FakeHomeAssistant()
+        val original=LocalHa(demo)
+        val snapshot=original.load(nowMs()-86_400_000)
+        val mochi=snapshot.pets.single { it.name=="Mochi" }
+        original.resetTracker(mochi)
+        var reads=0; var writes=0
+        val retrying=object : HaBackend by demo {
+            override suspend fun get(path: String): String {
+                if(path.startsWith("/api/states/number.")) {
+                    reads++
+                    if(reads==1) throw ApiException("Entity reloading")
+                    if(reads==2) return """{"state":"unavailable"}"""
+                }
+                return demo.get(path)
+            }
+            override suspend fun post(path: String,body: String): String {
+                if(path=="/api/services/number/set_value" && ++writes==1) throw ApiException("Temporarily unavailable")
+                return demo.post(path,body)
+            }
+        }
+        val ha=LocalHa(retrying)
+        assertTrue(ha.addPet("Pixel",9.25,setOf(snapshot.robots.first().serial)).isEmpty())
+        assertEquals(2,writes); assertEquals(5,reads)
+        val after=ha.load(nowMs()-86_400_000)
+        assertEquals(9.25,after.pets.single { it.name=="Pixel" }.referenceLbs)
+        assertTrue(after.pets.any { it.name=="Luna" })
+    }
+
+    @Test fun missingTrackerControlsAreSkippedAndIncompleteHistoryRowsAreIgnored() = runTest {
+        val backend=Backend()
+        val ha=LocalHa(backend)
+        val pet=Pet(obj("""{"haSlots":[{"robot":"r","entities":[null,42,"sensor.weight"]},{}]}"""))
+        ha.setTrackerWeight(pet,10.0); ha.resetTracker(pet)
+        backend.devices="""[{"id":"r","model":"Litter Robot 4"}]"""
+        backend.entities="""[{"device_id":"r","platform":"esphome","entity_id":"sensor.status","original_name":"Status"}]"""
+        backend.history="""[[],[{"state":"Ready"}],[
+            {"entity_id":"sensor.status","last_changed":"invalid","state":"Ready"},
+            {"last_changed":"2026-10-01T12:00:00Z"},
+            {"last_changed":"2026-10-01T12:00:00Z","state":"Cat detected"}]]"""
+        val result=ha.load(0)
+        assertEquals(listOf(Act(parseTs("2026-10-01T12:00:00Z")!!,"robotStatusCatDetect")),result.acts.getValue("r"))
     }
 }

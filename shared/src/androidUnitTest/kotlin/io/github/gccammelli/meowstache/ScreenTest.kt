@@ -11,11 +11,15 @@ import android.graphics.Canvas
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import io.github.gccammelli.meowstache.ui.*
+import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
+import kotlinx.datetime.LocalDate
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -104,6 +108,76 @@ class ScreenTest {
         val raw=robot.raw.toMutableMap()
         for ((key,value) in values) if(value==null) raw.remove(key) else raw[key]=JsonPrimitive(value)
         Repo.state.value=Repo.state.value.copy(robots=listOf(Robot(JsonObject(raw))))
+    }
+
+    @Test fun unusualVisitPatternsCanBeDismissedWithoutLosingHistory() {
+        val id=pet.id
+        val today=LocalDate.now()
+        val readings=(0..29).flatMap { days ->
+            val at=today.minusDays(days.toLong()).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()+12*60*60_000L
+            List(if(days==0) 8 else 2) { visit -> Reading(at+visit*60_000,10.0) }
+        }
+        Repo.state.value=Repo.state.value.copy(weights=mapOf(id to readings),acts=emptyMap(),overrides=emptyMap())
+        show("Patterns") { PatternsCard(state(),id) }
+        compose.onNodeWithText("Visits: Increased 4X from 2 to 8").assertExists()
+        compose.onNodeWithText("Significant").assertExists()
+        compose.onNodeWithContentDescription("Dismiss").performClick()
+        compose.onNodeWithText("Nothing new over the last 30 days.").assertExists()
+        assertEquals(setOf("$id|VISITS|$today"),Repo.local.value.dismissedPatterns)
+        assertEquals(readings,Repo.state.value.weights[id])
+    }
+
+    @Test fun emptyHistoryExplainsWhyThereAreNoPatterns() {
+        Repo.state.value=Repo.state.value.copy(weights=emptyMap(),acts=emptyMap())
+        show("Patterns") { PatternsCard(state(),pet.id) }
+        compose.onNodeWithText("Everything looks normal over the last 30 days.").assertExists()
+        compose.onNodeWithContentDescription("Dismiss").assertDoesNotExist()
+    }
+
+    @Test fun patternFootersLimitVisibleItemsAndKeepBothDirectionsDistinct() {
+        val today=LocalDate.now()
+        val days=(0..3).map { today.minusDays(it.toLong()) }
+        val b=days.map { Bucket(it,it,"Day") }
+        val patterns=days.associateWith { listOf(Pattern(Metric.VISITS,it,2.0,8.0,true)) }
+        assertEquals(listOf(1,1,1,1),marksFor(b,Range.WEEK,patterns,Metric.VISITS))
+        assertEquals(listOf(0,0,0,0),marksFor(b,Range.MONTH,patterns,Metric.WEIGHT))
+        assertTrue(marksFor(b,Range.YEAR,patterns,Metric.VISITS).isEmpty())
+        val down=Pattern(Metric.WEIGHT,today,10.0,9.6,false)
+        assertEquals(listOf(-1),marksFor(b.take(1),Range.MONTH,mapOf(today to listOf(down)),Metric.WEIGHT))
+        compose.setContent { AppTheme { androidx.compose.foundation.layout.Column {
+            PatternLine(down)
+            PatternFooter(b,Range.WEEK,patterns,Metric.VISITS)
+            PatternFooter(b,Range.YEAR,patterns,Metric.VISITS)
+            PatternFooter(b,Range.MONTH,patterns,Metric.DURATION)
+        } } }
+        compose.onAllNodesWithText("Significant").assertCountEquals(3)
+        compose.onNodeWithText("Notable").assertExists()
+        compose.onNodeWithText("Weight: Decreased",substring=true).assertExists()
+        compose.onNodeWithContentDescription("Dismiss").assertDoesNotExist()
+    }
+
+    @Test fun visitTimeChartPagesThroughHistoryAndResetsWhenTheRangeChanges() {
+        val id=pet.id
+        show("Time of Visit") { TimeOfVisitCard(state(),id) }
+        compose.onNodeWithContentDescription("Next").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Previous").performClick()
+        compose.onNodeWithContentDescription("Next").assertIsEnabled().performClick()
+        compose.onNodeWithContentDescription("Next").assertIsNotEnabled()
+        compose.onNodeWithText("Month").performClick()
+        compose.onNodeWithContentDescription("Previous").performClick()
+        compose.onNodeWithText("Week").performClick()
+        compose.onNodeWithContentDescription("Next").assertIsNotEnabled()
+        compose.onNodeWithText("Bubble size shows how long each visit lasted.").assertExists()
+    }
+
+    @Test fun durationChartSupportsAllRangesAndEmptyHistory() {
+        val id=pet.id
+        show("Visit Duration") { DurationCard(state(),id) }
+        for(label in listOf("Month","Year","All","Week")) compose.onNodeWithText(label).performClick()
+        compose.onNodeWithText("Minutes").assertExists()
+        compose.runOnIdle { Repo.state.value=Repo.state.value.copy(weights=emptyMap(),acts=emptyMap()) }
+        compose.onNodeWithContentDescription("Previous").assertIsNotEnabled()
+        compose.onNodeWithText("Visit Duration").assertExists()
     }
 
     @Test fun hopperStatesExplainEnableDisableAndUnavailableHardware() {
@@ -198,6 +272,72 @@ class ScreenTest {
         compose.onNodeWithText("Start a clean cycle?").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
         compose.mainClock.advanceTimeBy(500)
+    }
+
+    @Test fun historyReassignmentUnassignmentAndUndoUpdateOnlyPhoneAssignments() {
+        val p=pet; val other=Repo.state.value.pets.last(); val ts=nowMs()
+        val a=Act(ts,"catWeight","10.0")
+        Repo.state.value=Repo.state.value.copy(weights=mapOf(p.id to listOf(Reading(ts,10.0))),acts=mapOf(robot.serial to listOf(a)))
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("History",substring=false).performClick()
+        fun menu() { compose.onNodeWithContentDescription("Show menu").performScrollTo().performClick() }
+        menu(); compose.onNodeWithText("Unassign weight").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertTrue(Repo.local.value.overrides.isEmpty())
+        menu(); compose.onNodeWithText("Unassign weight").performClick()
+        compose.onNodeWithText("Unassign",substring=false).performClick()
+        assertEquals("",Repo.local.value.overrides[ts])
+        compose.onNodeWithText("Unassigned").assertExists()
+        menu(); compose.onNodeWithText("Undo my change").performClick()
+        assertTrue(Repo.local.value.overrides.isEmpty())
+        menu(); compose.onNodeWithText("Reassign weight").performClick()
+        compose.onNodeWithText(other.name).performClick()
+        assertEquals(other.id,Repo.local.value.overrides[ts])
+        assertEquals(10.0,Repo.state.value.history.getValue(other.id).single().lbs,0.0)
+        assertEquals(listOf(a),Repo.state.value.acts[robot.serial])
+    }
+
+    @Test fun emptyRobotHistoryDistinguishesLoadingFromNoRecordedActivity() {
+        Repo.state.value=Repo.state.value.copy(acts=emptyMap(),updatedAt=0,historyLoading=true)
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("History",substring=false).performClick()
+        compose.onNodeWithText("Loading full history…").performScrollTo().assertExists()
+        compose.runOnIdle { Repo.state.value=Repo.state.value.copy(historyLoading=false) }
+        compose.onNodeWithText("No activity yet").assertExists()
+        compose.onNodeWithText("Last updated: —").performScrollTo().assertExists()
+        compose.onNodeWithText("Month",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Download Activity").performScrollTo().performClick()
+        assertEquals("timestamp,event,label,value,pet,visit_min\n",sharedCsv)
+    }
+
+    @Test fun historyPaginationCanCollapseAndCsvRetainsUnknownActivityRecords() {
+        val ts=nowMs()
+        val events=listOf("litterHopperDispensed","robotStatusCatDetect","bonnetRemovedYes","robotCycleStatusIdle","DFIFullFlagOn","powerTypeDC","unknown-future-event")
+            .mapIndexed { i,event -> Act(ts-i*60_000,event) }
+        Repo.state.value=Repo.state.value.copy(acts=mapOf(robot.serial to events))
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("History",substring=false).performClick()
+        compose.onNodeWithText("See More").performScrollTo().performClick()
+        compose.onNodeWithText("See Less").performScrollTo().performClick()
+        compose.onNodeWithText("See Less").assertDoesNotExist()
+        compose.onNodeWithText("Download Activity").performScrollTo().performClick()
+        assertTrue(sharedCsv!!.contains(",unknown-future-event,,,,"))
+        assertEquals(events.size+1,sharedCsv!!.lines().size)
+    }
+
+    @Test fun changedLocalLightSettingsReachTheCorrectFirmwareEntities() {
+        localHome()
+        show(robot.model) { RobotScreen(it,robot.serial) }
+        compose.onNodeWithText("Controls",substring=false).performClick()
+        compose.onNodeWithText("Lights",substring=false).performScrollTo().performClick()
+        compose.onNode(hasText("Off",substring=false) and hasAnyAncestor(isDialog())).performClick()
+        compose.onAllNodesWithText("Low",substring=false).onFirst().performClick()
+        compose.onAllNodesWithText("Low",substring=false).onLast().performClick()
+        compose.onNodeWithText("Set",substring=false).performClick()
+        compose.waitUntil(10000) { compose.waitForIdle();
+            robot.nightLightMode=="OFF" && robot.raw.i("nightLightBrightness")==25 && robot.raw.i("panelBrightnessHigh")==25
+        }
+        assertTrue(messages.none { it.startsWith("Failed:") })
     }
     @Test fun robotLightsOfferModes() {
         show(robot.model) { RobotScreen(it, robot.serial) }
@@ -552,6 +692,77 @@ class ScreenTest {
         compose.onNodeWithText("Firmware details").performClick()
         compose.onNodeWithText("Firmware Information").assertExists()
         compose.onNodeWithText("OK").performClick()
+    }
+
+    @Test fun firmwareInstallRequiresConfirmationAndReportsEachBackendOutcome() {
+        val prefs=Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue
+        prefs.putBoolean("demo",false)
+        val field=Repo::class.java.getDeclaredField("api").apply { isAccessible=true }; val original=field.get(Repo)
+        val jwt="header."+kotlin.io.encoding.Base64.UrlSafe.withPadding(kotlin.io.encoding.Base64.PaddingOption.ABSENT)
+            .encode("""{"mid":"owner","exp":4102444800}""".encodeToByteArray())+".sig"
+        val secrets=object : SecretStore {
+            override fun get(key: String)=if(key=="id") jwt else null
+            override fun set(key: String,value: String?)=Unit
+            override fun clear()=Unit
+        }
+        var outcome=0; var requests=0
+        io.ktor.client.HttpClient(io.ktor.client.engine.mock.MockEngine { request ->
+            val query=json.parseToJsonElement((request.body as io.ktor.http.content.TextContent).text).jsonObject.s("query").orEmpty()
+            val body=if("getFirmwareDetails" in query) """{"data":{"litterRobot4CompareFirmwareVersion":{"isEspFirmwareUpdateNeeded":true,"latestFirmware":{"espFirmwareVersion":"2","picFirmwareVersion":"3","laserBoardFirmwareVersion":"4"}}}}"""
+            else {
+                requests++
+                if(outcome==2) """{"errors":[{"message":"Update denied"}]}""" else
+                    """{"data":{"litterRobot4TriggerFirmwareUpdate":{"isUpdateTriggered":${outcome==1}}}}"""
+            }
+            respond(body)
+        }).use { http ->
+            field.set(Repo,Api(Settings(),secrets,http))
+            try {
+                val label="Install update on ${robot.name}"
+                show("Firmware Updates") { FirmwareScreen(it) }
+                compose.waitUntil(5000) { compose.waitForIdle(); compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithText(label).performScrollTo().performClick()
+                compose.onNodeWithText("Cancel").performClick()
+                assertEquals(0,requests)
+                for((result,message) in listOf(0 to "Update not started",1 to "Update started",2 to "Failed: Update denied")) {
+                    outcome=result
+                    compose.onNodeWithText(label).performClick()
+                    compose.onNodeWithText("Install",substring=false).performClick()
+                    compose.waitUntil(5000) { compose.waitForIdle(); messages.contains(message) }
+                }
+                assertEquals(3,requests)
+            } finally { field.set(Repo,original) }
+        }
+    }
+
+    @Test fun visitSummaryWithoutRobotOrDurationKeepsUnavailableFeaturesExplicit() {
+        val p=pet; val ts=nowMs()
+        Repo.state.value=AppState(pets=listOf(p),weights=mapOf(p.id to listOf(Reading(ts,10.0))))
+        show("Visit Summary") { VisitSummaryScreen(it,p.id,ts) }
+        compose.onNodeWithText("Litter-Robot",substring=false).assertExists()
+        compose.onNodeWithText("—min",substring=false).assertExists()
+        compose.onNodeWithText("Waste analysis (urine / feces)").performClick()
+        assertEquals("Waste analysis",Repo.askUnavailable.value)
+        compose.onNodeWithText("Needs a camera model (Litter-Robot 5 Pro)").performClick()
+        assertEquals("Pictures and videos of a visit",Repo.askUnavailable.value)
+        compose.runOnIdle { Repo.setShowUnavailable(false) }
+        compose.onNodeWithText("Pictures & Videos").assertDoesNotExist()
+    }
+
+    @Test fun sparsePetProfilesShowMissingDataAndKeepLocalNotesEditable() {
+        val id=pet.id
+        val p=Pet(kotlinx.serialization.json.buildJsonObject { put("petId",id); put("name","New cat") })
+        Repo.state.value=AppState(pets=listOf(p))
+        show("New cat") { PetProfileScreen(it,id) }
+        compose.onNodeWithText("Last Visit:",substring=true).assertDoesNotExist()
+        compose.onNodeWithText("Feeding Time").performScrollTo().performClick()
+        compose.onNodeWithText("Specific Times").performClick()
+        assertEquals("Specific Times",Repo.local.value.petNotes[id]!!.feedingTime)
+        compose.onNodeWithText("Personality",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Curious").performClick()
+        compose.onNodeWithText("Playful").performClick()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(listOf("Playful","Curious"),Repo.local.value.petNotes[id]!!.personality)
     }
 
     @Test fun unavailableFeatureDialogCanHideUnsupportedControls() {
