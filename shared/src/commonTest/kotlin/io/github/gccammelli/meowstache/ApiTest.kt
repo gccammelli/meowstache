@@ -138,4 +138,64 @@ class ApiTest {
             assertContentEquals("image".encodeToByteArray(), api.bytes("https://example.test/image"))
         }
     }
+
+    @Test fun malformedSavedClaimsAreRefreshedBeforeAnyAuthenticatedRequest() = runTest {
+        fun claims(text: String)="header."+Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(text.encodeToByteArray())+".signature"
+        for(saved in listOf("not-a-jwt","header.@@.signature",claims("{}"),claims("[]"),claims("""{"mid":null,"exp":"invalid"}"""))) {
+            val secrets=Secrets().apply { set("id",saved); set("refresh","saved-refresh") }
+            val fresh=token(); var calls=0
+            HttpClient(MockEngine { request ->
+                calls++
+                if(request.headers["X-Amz-Target"]!=null) respond("""{"AuthenticationResult":{"IdToken":"$fresh"}}""") else {
+                    assertEquals("Bearer $fresh",request.headers["Authorization"])
+                    respond("""{"data":{"ok":true}}""")
+                }
+            }).use { http ->
+                val api=Api(Settings(),secrets,http)
+                assertNull(api.userId)
+                assertTrue(api.gql("https://example.test/graphql","query").b("ok"))
+                assertEquals("owner",api.userId); assertEquals(2,calls)
+            }
+        }
+    }
+
+    @Test fun missingChallengeProfileAndErrorDetailsNeverBecomeSuccessfulLoginData() = runTest {
+        val secrets=Secrets().apply { set("id",token()) }
+        HttpClient(MockEngine { respond("{}") }).use { http ->
+            val api=Api(Settings(),secrets,http)
+            assertTrue(api.user().isEmpty())
+            assertFailsWith<AuthException> { api.login("person@example.test","password") }
+            assertNull(secrets.get("refresh"))
+        }
+        for(body in listOf("""{"errors":[]}""","""{"data":{},"errors":[]}""")) {
+            HttpClient(MockEngine { respond(body) }).use { http ->
+                assertTrue(Api(Settings(),secrets,http).gql("https://example.test/graphql","query").isEmpty())
+            }
+        }
+        HttpClient(MockEngine { respond("""{"errors":[{}]}""") }).use { http ->
+            assertFailsWith<ApiException> { Api(Settings(),secrets,http).gql("https://example.test/graphql","query") }
+        }
+    }
+    @Test fun aBurstBeyondTheRequestBudgetStopsBeforeAnotherHttpRequest() = runTest {
+        var calls=0
+        HttpClient(MockEngine { calls++; respond("""{"data":{"ok":true}}""") }).use { http ->
+            val api=Api(Settings(),Secrets().apply { set("id",token()) },http)
+            repeat(60) { assertTrue(api.gql("https://example.test/graphql","query").b("ok")) }
+            assertEquals("Paused for a few minutes to go easy on Whisker's servers",assertFailsWith<ApiException> {
+                api.gql("https://example.test/graphql","query")
+            }.message)
+            assertEquals(60,calls)
+        }
+    }
+
+    @Test fun partialGraphqlDataRemainsUsableAndStringListsIgnoreNonPrimitiveEntries() = runTest {
+        HttpClient(MockEngine { respond("""{"data":{"known":"value"},"errors":[{"message":"optional field unavailable"}]}""") }).use { http ->
+            val data=Api(Settings(),Secrets().apply { set("id",token()) },http).gql("https://example.test/graphql","query")
+            assertEquals("value",data.s("known"))
+        }
+        val shapes=json.parseToJsonElement("""{"missingType":{},"values":["A",null,{},[],"B",2,true]}""").jsonObject
+        assertEquals(emptyList(),shapes.strings("absent")); assertEquals(emptyList(),shapes.strings("missingType"))
+        assertEquals(listOf("A","B","2","true"),shapes.strings("values"))
+    }
+
 }

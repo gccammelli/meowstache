@@ -11,14 +11,20 @@ import kotlin.concurrent.thread
 import kotlin.test.*
 
 /** A loopback-only WebSocket peer: exercises the real Ktor client without a Home Assistant. */
-private class HaSocket(private val authenticate: Boolean = true, private val reject: Boolean = false) : AutoCloseable {
+internal class HaSocket(
+    private val authenticate: Boolean = true, private val reject: Boolean = false,
+    private val errorMessage: String? = "operation denied",
+    private val sessions: Int = 1, private val commandsPerSession: Int = 2,
+    private val result: ((JsonObject) -> JsonElement?)? = null,
+    private val httpResponse: ((String) -> String)? = null,
+) : AutoCloseable {
     private val listener = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
     val url = "http://localhost:${listener.localPort}"
     val received = mutableListOf<JsonObject>()
     private var failure: Throwable? = null
     private val worker = thread(isDaemon = true) {
         try {
-            listener.accept().use { socket ->
+            repeat(sessions) { listener.accept().use { socket ->
                 socket.soTimeout = 5000
                 val input = socket.getInputStream()
                 val output = socket.getOutputStream()
@@ -27,6 +33,13 @@ private class HaSocket(private val authenticate: Boolean = true, private val rej
                     val byte = input.read()
                     check(byte >= 0)
                     headers.append(byte.toChar())
+                }
+                if (!headers.lines().any { it.startsWith("Sec-WebSocket-Key:",true) }) {
+                    val path=headers.toString().substringBefore("\r\n").split(' ')[1]
+                    val body=checkNotNull(httpResponse) { "Unexpected HTTP request" }(path).toByteArray()
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ${body.size}\r\n\r\n".toByteArray())
+                    output.write(body); output.flush()
+                    return@use
                 }
                 val key = headers.lines().first { it.startsWith("Sec-WebSocket-Key:", true) }.substringAfter(':').trim()
                 val accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray()))
@@ -52,18 +65,28 @@ private class HaSocket(private val authenticate: Boolean = true, private val rej
                 next()
                 send(if (authenticate) "{\"type\":\"auth_ok\"}" else "{\"type\":\"auth_invalid\"}")
                 if (authenticate) {
-                    repeat(if (reject) 1 else 2) {
+                    repeat(if (reject) 1 else commandsPerSession) {
                         val c = next()
                         val id = c.getValue("id")
-                        if (reject) send("{\"id\":$id,\"success\":false,\"error\":{\"message\":\"operation denied\"}}")
-                        else {
+                        if (reject) send(buildJsonObject {
+                            put("id",id); put("success",false)
+                            errorMessage?.let { text -> putJsonObject("error") { put("message",text) } }
+                        }.toString())
+                        else if (result != null) {
+                            val reply = try {
+                                buildJsonObject { put("id", id); put("success", true); put("result", result.invoke(c) ?: JsonNull) }
+                            } catch (error: ApiException) {
+                                buildJsonObject { put("id", id); put("success", false); put("error", buildJsonObject { put("message", error.message) }) }
+                            }
+                            send(reply.toString())
+                        } else {
                             send("{\"id\":999,\"success\":true,\"result\":\"unrelated\"}")
                             send("{\"id\":$id,\"success\":true,\"result\":{\"command\":${c.getValue("type")}}}")
                         }
                     }
                 }
                 output.write(byteArrayOf(0x88.toByte(), 0)); output.flush()
-            }
+            } }
         } catch (e: Throwable) { failure = e }
     }
     override fun close() {
@@ -95,5 +118,17 @@ class HomeAssistantWebSocketTest {
             assertEquals("operation denied", error.message)
         }
     }
+    @Test fun administratorFailuresExplainTheRequiredPermissionAndMissingErrorsStayExplicit() = runTest {
+        for((message,expected) in listOf("Admin privileges required" to "This needs a Home Assistant administrator's token",
+            "Unauthorized" to "This needs a Home Assistant administrator's token",null to "Home Assistant refused config/device_registry/list")) {
+            HaSocket(reject=true,errorMessage=message).use { server ->
+                val error=assertFailsWith<ApiException> {
+                    HaHttp(server.url,"token").ws(listOf(buildJsonObject { put("type","config/device_registry/list") }))
+                }
+                assertEquals(expected,error.message)
+            }
+        }
+    }
+
 }
 

@@ -63,6 +63,25 @@ class ModelCoverageTest {
         assertEquals(listOf(Reading(1767225600000L, 10.0)), p.embeddedWeights)
     }
 
+    @Test fun sparseDeviceAndPetDetailsUseDocumentedFallbacksWithoutLosingZeroValues() {
+        val empty = Robot(JsonObject(emptyMap()))
+        assertEquals("",empty.id); assertEquals("",empty.serial); assertEquals("Litter-Robot",empty.name)
+        assertEquals(0,empty.wastePercent); assertEquals("OFF",empty.nightLightMode); assertEquals(0,empty.scoopsSaved)
+        val known = robot("unitId" to JsonPrimitive("unit"),"serial" to JsonPrimitive("serial"),"name" to JsonPrimitive("Robbie"),
+            "DFILevelPercent" to JsonPrimitive(70.9),"scoopsSavedCount" to JsonPrimitive(0),"nightLightMode" to JsonPrimitive("AUTO"))
+        assertEquals("unit",known.id); assertEquals("serial",known.serial); assertEquals("Robbie",known.name)
+        assertEquals(70,known.wastePercent); assertEquals("AUTO",known.nightLightMode); assertEquals(0,known.scoopsSaved)
+        for(days in listOf("{}","{\"Monday\":null}","{\"Monday\":false}","{\"Monday\":{}}","{\"Monday\":{\"isEnabled\":false}}")) {
+            assertFalse(robot("weekdaySleepModeEnabled" to json.parseToJsonElement(days)).sleepEnabled)
+        }
+        val missing=Pet(JsonObject(emptyMap()))
+        assertEquals("",missing.id); assertEquals("",missing.name); assertNull(missing.lastLbs)
+        val pet=Pet(json.parseToJsonElement("""{"petId":"p","name":"Pixel","lastWeightReading":0,"breeds":["_DOMESTIC__SHORTHAIR_"],"healthConcerns":["_SKIN__CONDITION_",""]}""").jsonObject)
+        assertEquals("p",pet.id); assertEquals("Pixel",pet.name); assertEquals(0.0,pet.lastLbs)
+        assertEquals(" Domestic  Shorthair ",pet.breed)
+        assertEquals(" skin  condition , ",pet.health)
+    }
+
     @Test fun timestampsAcceptEveryApiFormatWithoutInventingInvalidDates() {
         val epoch = 1767225600000L
         for (s in listOf(" 1767225600 ", "1767225600000", "2026-01-01T00:00:00Z", "2026-01-01T01:00:00+01:00", "2026-01-01 00:00:00", "2026-01-01T00:00:00")) assertEquals(epoch, parseTs(s), s)

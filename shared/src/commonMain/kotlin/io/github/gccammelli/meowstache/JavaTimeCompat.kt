@@ -115,7 +115,7 @@ class DateTimeFormatter private constructor(private val pattern: String) {
 
 /**
  * String.format for the specifiers used here: %s %d %02d %,d %.Nf %%. Rounds half up like Java;
- * always "." decimals and "," grouping.
+ * always "." decimals and "," grouping, suppressing a minus sign when a float rounds to zero.
  */
 fun String.format(vararg args: Any?): String {
     val out = StringBuilder(); var arg = 0; var i = 0
@@ -133,7 +133,7 @@ fun String.format(vararg args: Any?): String {
                 val n = (v as Number).toLong()
                 val digits = abs(n).toString().let { if (',' in spec) group(it) else it }
                 val width = spec.filter { it.isDigit() }.toIntOrNull() ?: 0
-                (if (n < 0) "-" else "") + digits.padStart(width - (if (n < 0) 1 else 0), if (spec.startsWith("0")) '0' else ' ')
+                (if (n < 0) "-" else "") + digits.padStart((width - (if (n < 0) 1 else 0)).coerceAtLeast(0), if (spec.startsWith("0")) '0' else ' ')
             }
             else -> {
                 val d = (v as Number).toDouble(); val dec = spec.substringAfter('.', "6").toInt()

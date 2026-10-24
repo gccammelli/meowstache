@@ -1,0 +1,12 @@
+# A partial line is uncovered: keep the dashboard and project gate on the same metric.
+parsers:
+  jacoco:
+    partials_as_hits: false
+coverage:
+  status:
+    project:
+      default:
+        target: 95%
+        threshold: 0%
+        if_not_found: failure
+        informational: false
