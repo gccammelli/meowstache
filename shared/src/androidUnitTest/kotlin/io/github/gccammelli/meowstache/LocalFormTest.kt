@@ -108,6 +108,65 @@ class LocalFormTest {
         assertEquals(4.5 / LBS_TO_KG, renamed.referenceLbs!!, 0.01)
     }
 
+    @Test fun newCatCannotBeAddedWithZeroWeightOrWithoutASelectedRobot() {
+        show { MainScreen(rememberNavController()) }
+        compose.onNodeWithText("Add a pet").performScrollTo().performClick()
+        compose.onNodeWithText("Name").performTextInput("Pixel")
+        compose.onNodeWithText("Weight (kg)").performTextInput("0")
+        compose.onNodeWithText("Add",substring=false).assertIsNotEnabled()
+        compose.onNodeWithText("Weight (kg)").performTextReplacement("4,5")
+        val count=compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size
+        repeat(count) { compose.onAllNodes(isToggleable())[it].performClick() }
+        compose.onNodeWithText("Add",substring=false).assertIsNotEnabled()
+        compose.onAllNodes(isToggleable()).onFirst().performClick()
+        compose.onNodeWithText("Add",substring=false).assertIsEnabled()
+        compose.onNodeWithText("Cancel").performClick()
+        assertFalse(Repo.state.value.pets.any { it.name=="Pixel" })
+    }
+
+    private fun refuseTrackerChanges() {
+        val field=Repo::class.java.getDeclaredField("ha").apply { isAccessible=true }
+        val original=(field.get(Repo) as LocalHa).backend
+        field.set(Repo,LocalHa(object : HaBackend by original {
+            override suspend fun post(path: String,body: String): String=throw ApiException("Service unavailable")
+            override suspend fun ws(commands: List<JsonObject>): List<JsonElement?> {
+                if(commands.any { it.s("type")?.endsWith("/update")==true }) throw ApiException("Admin permission required")
+                return original.ws(commands)
+            }
+        }))
+    }
+
+    @Test fun failedTrackerWeightRenameAndResetShowTheirErrorsWithoutRemovingThePet() {
+        val pet=Repo.state.value.pets.first(); refuseTrackerChanges()
+        show { PetProfileScreen(rememberNavController(),pet.id) }
+        compose.onNodeWithText("Edit Profile").performScrollTo().performClick()
+        compose.onNodeWithText("Name").performTextReplacement("Pixel")
+        compose.onNodeWithText("Set tracker weight (kg)").performTextInput("4,5")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Rename failed: Admin permission required") }
+        assertTrue(messages.contains("Failed: Service unavailable"))
+        compose.onNodeWithText("Edit Profile").performClick()
+        compose.onNodeWithText("Reset tracker…").performClick()
+        compose.onNodeWithText("Reset",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.count { it=="Failed: Service unavailable" }==2 }
+        assertTrue(Repo.state.value.pets.any { it.id==pet.id })
+    }
+
+    @Test fun resettingATrackerRequiresConfirmationAndPreservesPhoneHistory() {
+        val pet=Repo.state.value.pets.first(); Repo.setUnits("lb")
+        val history=Repo.state.value.weights[pet.id]
+        show { PetProfileScreen(rememberNavController(),pet.id) }
+        compose.onNodeWithText("Edit Profile").performScrollTo().performClick()
+        compose.onNodeWithText("Set tracker weight (lbs)").performTextInput("invalid")
+        compose.onNodeWithText("Reset tracker…").performClick()
+        compose.onAllNodesWithText("Cancel").onLast().performClick()
+        assertTrue(Repo.state.value.pets.any { it.id==pet.id })
+        compose.onNodeWithText("Reset tracker…").performClick()
+        compose.onNodeWithText("Reset",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); Repo.state.value.pets.none { it.id==pet.id } }
+        assertEquals(history,Repo.state.value.weights[pet.id])
+    }
+
     @Test fun robotNicknameCanBeChangedThroughTheLocalBackend() {
         val robot = Repo.state.value.robots.first()
         show { DeviceSettingsScreen(rememberNavController(), robot.serial) }
@@ -148,6 +207,41 @@ class LocalFormTest {
         compose.onNodeWithText("Turn off").performClick()
         assertNull(Repo.clipsFolder); assertTrue(Repo.clips.value.isEmpty())
     }
+
+    @Test fun cloudVideosValidateCredentialsReportErrorsAndSaveAWorkingConnection() {
+        (Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue).putBoolean("demo",false)
+        val tokens=mutableMapOf<String,String>()
+        Repo::class.java.getDeclaredField("secrets").apply { isAccessible=true }.set(Repo,object : SecretStore {
+            override fun get(key: String)=tokens[key]
+            override fun set(key: String,value: String?) { if(value==null) tokens.remove(key) else tokens[key]=value }
+            override fun clear()=tokens.clear()
+        })
+        Repo.setMode(false)
+        show { AccountScreen(rememberNavController()) }
+        compose.onNodeWithText("Visit Videos").performScrollTo().performClick()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
+        compose.onNodeWithText("Setup guide").performClick()
+        assertTrue(urls.last().endsWith("/docs/visit-videos.md"))
+        compose.onNodeWithText("Long-lived access token").performTextInput("test-token")
+        compose.onNodeWithText("Away address (optional)").performTextInput("https://away.example")
+        compose.onNodeWithText("Away address (optional)").performTextClearance()
+        compose.onNodeWithText("Media folder").performTextReplacement(" / ")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); compose.onAllNodesWithText("Enter the media folder's name").fetchSemanticsNodes().isNotEmpty() }
+        HaSocket(commandsPerSession=1,result={ kotlinx.serialization.json.buildJsonObject {
+            put("children",kotlinx.serialization.json.JsonArray(emptyList()))
+        } }).use { peer ->
+            compose.onNodeWithText("Home Assistant address").performTextReplacement(peer.url)
+            compose.onNodeWithText("Media folder").performTextReplacement("visits")
+            compose.onNodeWithText("Save").performClick()
+            compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it.startsWith("Connected · no videos yet") } }
+            assertEquals("visits",Repo.clipsFolder)
+        }
+        compose.onNodeWithText("Visit Videos").performClick()
+        compose.onNodeWithText("Turn off").performClick()
+        assertNull(Repo.clipsFolder)
+    }
+
 
     @Test fun localControlsConfirmPowerPanelAndCycleCommands() {
         val robot = Repo.state.value.robots.first()

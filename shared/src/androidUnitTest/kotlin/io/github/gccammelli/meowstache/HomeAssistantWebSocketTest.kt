@@ -15,6 +15,7 @@ internal class HaSocket(
     private val authenticate: Boolean = true, private val reject: Boolean = false,
     private val sessions: Int = 1, private val commandsPerSession: Int = 2,
     private val result: ((JsonObject) -> JsonElement?)? = null,
+    private val httpResponse: ((String) -> String)? = null,
 ) : AutoCloseable {
     private val listener = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
     val url = "http://localhost:${listener.localPort}"
@@ -31,6 +32,13 @@ internal class HaSocket(
                     val byte = input.read()
                     check(byte >= 0)
                     headers.append(byte.toChar())
+                }
+                if (!headers.lines().any { it.startsWith("Sec-WebSocket-Key:",true) }) {
+                    val path=headers.toString().substringBefore("\r\n").split(' ')[1]
+                    val body=checkNotNull(httpResponse) { "Unexpected HTTP request" }(path).toByteArray()
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ${body.size}\r\n\r\n".toByteArray())
+                    output.write(body); output.flush()
+                    return@use
                 }
                 val key = headers.lines().first { it.startsWith("Sec-WebSocket-Key:", true) }.substringAfter(':').trim()
                 val accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray()))

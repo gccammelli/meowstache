@@ -123,4 +123,33 @@ class RepositoryVideosTest {
             assertTrue(mediaCalls>before); assertEquals(listOf(clip),Repo.clips.value)
         } finally { Repo.logout(); Dispatchers.resetMain() }
     }
+
+    @Test fun localConnectionNormalizesTheTokenAndKeepsVerifiedSettingsAfterARejectedChange() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler)); init()
+        Repo.setMode(true)
+        Repo.updateLocal { it.copy(overrides=mapOf(123L to "saved-pet")) }
+        val registry: (JsonObject)->JsonElement = { command -> json.parseToJsonElement(when(command.s("type")) {
+            "config/device_registry/list" -> """[{"id":"r","name_by_user":"Workshop","model":"Litter Robot 4"}]"""
+            "config/entity_registry/list" -> """[{"entity_id":"sensor.status","device_id":"r","platform":"esphome","original_name":"Status"}]"""
+            else -> error("Unexpected registry command")
+        }) }
+        try {
+            HaSocket(sessions=3,result=registry,httpResponse={ path ->
+                if(path=="/api/states") """[{"entity_id":"sensor.status","state":"Ready"}]""" else {
+                    assertTrue(path.startsWith("/api/history/period/")); "[]"
+                }
+            }).use { peer ->
+                assertEquals(1,withContext(Dispatchers.IO) { Repo.connectHa(" ${peer.url}/ "," pasted\n token ") })
+                assertEquals(peer.url,storage.settings.getString("haUrl")); assertEquals("pastedtoken",tokens["haToken"])
+                assertTrue(Repo.signedIn); assertTrue(Repo.canCheckAlerts)
+                assertEquals(mapOf(123L to "saved-pet"),Repo.state.value.overrides)
+                assertEquals("pastedtoken",peer.received.first().s("access_token"))
+            }
+            val verified=storage.settings.getString("haUrl")
+            HaSocket(authenticate=false).use { peer ->
+                assertFailsWith<AuthException> { withContext(Dispatchers.IO) { Repo.connectHa(peer.url,"rejected") } }
+            }
+            assertEquals(verified,storage.settings.getString("haUrl")); assertEquals("pastedtoken",tokens["haToken"])
+        } finally { Repo.logout(); Dispatchers.resetMain() }
+    }
 }

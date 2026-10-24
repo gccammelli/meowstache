@@ -259,6 +259,53 @@ class ScreenTest {
             compose.onAllNodesWithText(tab).onLast().assertIsDisplayed()
         }
     }
+
+    @Test fun mainNavigationConnectsRobotPetHistoryRecapAndAccountScreens() {
+        Repo.acceptIntro()
+        val p=pet; val r=robot
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme { Root() } } }
+        compose.mainClock.advanceTimeBy(1500)
+        fun back() { compose.onNodeWithContentDescription("Back").performClick(); compose.mainClock.advanceTimeBy(500) }
+        compose.onNodeWithText(r.name,substring=false).performScrollTo().performClick()
+        compose.onNodeWithText(r.model,substring=false).assertExists(); back()
+        compose.onNodeWithText(p.name,substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("${p.name}’s Insights").assertExists(); back()
+        compose.onNodeWithContentDescription("Pets").performClick()
+        compose.onNodeWithText(p.name,substring=false).performClick()
+        compose.onNodeWithText("SmartScale®",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("SmartScale® Details").assertExists()
+        compose.onNodeWithContentDescription("Info").performClick()
+        compose.onNodeWithText("How SmartScale® works").assertExists()
+        compose.onNodeWithText("OK").performClick(); back()
+        compose.onNodeWithText("Visits",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Visit Details").assertExists()
+        compose.onAllNodesWithText("Pet Visit Recorded").onFirst().performScrollTo().performClick()
+        compose.onNodeWithText("Visit Summary").assertExists(); back(); back(); back()
+        compose.onNodeWithContentDescription("Insights").performClick()
+        compose.onNodeWithText("Daily Recap",substring=false).performClick()
+        compose.onNodeWithText("Recap settings",substring=false).assertDoesNotExist()
+        compose.onNodeWithContentDescription("Recap settings").assertExists(); back()
+        compose.onNodeWithContentDescription("Messages").performClick()
+        compose.onNodeWithText("Message Center").assertExists(); back()
+        compose.onNodeWithContentDescription("Account").performClick()
+        for((label,title) in listOf("Measurement Units" to "Measurement Units","Firmware Updates" to "Firmware Updates","Region" to "Region")) {
+            compose.onNodeWithText(label,substring=false).performScrollTo().performClick()
+            compose.onNodeWithText(title,substring=false).assertExists(); back()
+        }
+    }
+
+    @Test fun anEmptyHomeExplainsRefreshFailuresAndKeepsSupportLinksAvailable() {
+        Repo.state.value=AppState(error="Home Assistant unavailable",historyLoading=true)
+        Repo.setShowBlogs(true)
+        show("Home") { MainScreen(it) }
+        compose.onNodeWithText("Couldn't refresh: Home Assistant unavailable").assertExists()
+        compose.onNodeWithText("Tell ",substring=true).assertDoesNotExist()
+        compose.onNodeWithText("Learn more").performScrollTo().performClick()
+        assertEquals("https://www.whisker.com/blog",urls.last())
+        compose.onNodeWithText("Litter-Robot Support",substring=false).performScrollTo().performClick()
+        assertTrue(urls.last().endsWith("/support/#contact-us"))
+        assertTrue(Repo.state.value.pets.isEmpty()); assertTrue(Repo.state.value.robots.isEmpty())
+    }
     @Test fun robotHistoryAndControlsAreReachable() {
         show(robot.model) { RobotScreen(it, robot.serial) }
         compose.onNodeWithText("History").performClick()
