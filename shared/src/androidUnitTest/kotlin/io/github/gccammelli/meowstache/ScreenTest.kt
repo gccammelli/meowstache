@@ -1000,4 +1000,70 @@ class ScreenTest {
         }
     }
 
+    @Test fun exitingTheDemoReturnsToWelcomeAndRemovesDemoSignIn() {
+        Repo.acceptIntro()
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme { Root() } } }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithContentDescription("Account").performClick()
+        compose.onNodeWithText("Exit Demo").performScrollTo().performClick()
+        compose.onNodeWithText("Login",substring=false).assertExists()
+        compose.onNodeWithText("Try the demo").assertExists(); assertFalse(Repo.signedIn)
+        assertTrue(Repo.state.value.robots.isEmpty())
+    }
+
+    @Test fun diagnosticsReadFailuresAreShownBeforeAnyFileIsSaved() {
+        localHome()
+        val field=Repo::class.java.getDeclaredField("ha").apply { isAccessible=true }; val original=field.get(Repo)
+        val demo=FakeHomeAssistant()
+        field.set(Repo,LocalHa(object : HaBackend by demo {
+            override suspend fun ws(commands: List<kotlinx.serialization.json.JsonObject>): List<kotlinx.serialization.json.JsonElement?> = throw ApiException("Home Assistant offline")
+        }))
+        try {
+            show("Account") { AccountScreen(it) }
+            compose.onNodeWithText("Home Assistant diagnostics").performScrollTo().performClick()
+            compose.onNodeWithText("Save file").performClick()
+            compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Couldn't read Home Assistant: Home Assistant offline") }
+            assertNull(savedBackup)
+        } finally { field.set(Repo,original) }
+    }
+
+    @Test fun targetWeightInPoundsPreservesHundredthsAndCancelDoesNotEnableATarget() {
+        Repo.setUnits("lbs"); Repo.setDecimals(2)
+        val p=pet
+        val yesterday=LocalDate.now().minusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()+12*3_600_000
+        Repo.state.value=Repo.state.value.copy(pets=listOf(p),weights=mapOf(p.id to listOf(Reading(yesterday,12.34))),acts=emptyMap(),overrides=emptyMap())
+        show("Notifications") { NotificationsScreen(it) }
+        compose.onNodeWithText(p.name).performScrollTo().performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertFalse(Repo.alerts.value.targets.containsKey(p.id))
+        compose.onNodeWithText(p.name).performClick()
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(12.34,Repo.alerts.value.targets.getValue(p.id).lbs,0.0001)
+        compose.onNodeWithText(p.name).performClick()
+        compose.onNodeWithText("Turn off").performClick()
+        assertFalse(Repo.alerts.value.targets.containsKey(p.id))
+    }
+
+    @Test fun deletedPetsAndRobotsDoNotRenderStaleDetailScreens() {
+        val selected=androidx.compose.runtime.mutableIntStateOf(0)
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme {
+            val nav=rememberNavController()
+            androidx.compose.material3.Text("Selection removed")
+            when(selected.intValue) {
+                0 -> RobotScreen(nav,"missing")
+                1 -> DeviceSettingsScreen(nav,"missing")
+                2 -> PetInsightsScreen(nav,"missing")
+                3 -> ScaleDetailsScreen(nav,"missing")
+                4 -> VisitDetailsScreen(nav,"missing")
+            }
+        } } }
+        repeat(5) { index ->
+            compose.runOnIdle { selected.intValue=index }
+            compose.onNodeWithText("Selection removed").assertExists()
+            compose.onNodeWithText("SmartScale® Details").assertDoesNotExist()
+            compose.onNodeWithText("Device Settings").assertDoesNotExist()
+            compose.onNodeWithText("Visit Details").assertDoesNotExist()
+        }
+    }
+
 }

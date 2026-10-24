@@ -13,6 +13,7 @@ import kotlin.test.*
 /** A loopback-only WebSocket peer: exercises the real Ktor client without a Home Assistant. */
 internal class HaSocket(
     private val authenticate: Boolean = true, private val reject: Boolean = false,
+    private val errorMessage: String? = "operation denied",
     private val sessions: Int = 1, private val commandsPerSession: Int = 2,
     private val result: ((JsonObject) -> JsonElement?)? = null,
     private val httpResponse: ((String) -> String)? = null,
@@ -67,7 +68,10 @@ internal class HaSocket(
                     repeat(if (reject) 1 else commandsPerSession) {
                         val c = next()
                         val id = c.getValue("id")
-                        if (reject) send("{\"id\":$id,\"success\":false,\"error\":{\"message\":\"operation denied\"}}")
+                        if (reject) send(buildJsonObject {
+                            put("id",id); put("success",false)
+                            errorMessage?.let { text -> putJsonObject("error") { put("message",text) } }
+                        }.toString())
                         else if (result != null) {
                             val reply = try {
                                 buildJsonObject { put("id", id); put("success", true); put("result", result.invoke(c) ?: JsonNull) }
@@ -114,5 +118,17 @@ class HomeAssistantWebSocketTest {
             assertEquals("operation denied", error.message)
         }
     }
+    @Test fun administratorFailuresExplainTheRequiredPermissionAndMissingErrorsStayExplicit() = runTest {
+        for((message,expected) in listOf("Admin privileges required" to "This needs a Home Assistant administrator's token",
+            "Unauthorized" to "This needs a Home Assistant administrator's token",null to "Home Assistant refused config/device_registry/list")) {
+            HaSocket(reject=true,errorMessage=message).use { server ->
+                val error=assertFailsWith<ApiException> {
+                    HaHttp(server.url,"token").ws(listOf(buildJsonObject { put("type","config/device_registry/list") }))
+                }
+                assertEquals(expected,error.message)
+            }
+        }
+    }
+
 }
 

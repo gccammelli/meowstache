@@ -234,4 +234,27 @@ class HomeAssistantBoundaryTest {
         val result=ha.load(0)
         assertEquals(listOf(Act(parseTs("2026-10-01T12:00:00Z")!!,"robotStatusCatDetect")),result.acts.getValue("r"))
     }
+    @Test fun wifiSignalAndDrawerTransitionsIgnoreUnknownMeasurementsAndRepeatedStates() {
+        for((value,expected) in listOf("-64.9" to -64,"-72" to -72,"unknown" to null,"unavailable" to null)) {
+            assertEquals(expected,robot(mapOf("sensor.wifi_signal" to value)).i("wifiRssi"))
+        }
+        val drawer=listOf("on","on","off","unknown","on","off","on","off")
+        val activities=haActs(emptyList(),emptyList(),drawer.mapIndexed { i,state -> HaPoint(i.toLong(),state) },null)
+        assertEquals(listOf(Act(6,"DFIFullFlagOn")),activities)
+        assertEquals("turn_off",haCommand(Robot(robot(mapOf("switch.night_light" to "on"))),"nightLightModeOff",null).second)
+        assertNull(Robot(JsonObject(emptyMap())).haState("switch.power"))
+        assertNull(Robot(obj("""{"haState":{}}""")).haState("switch.power"))
+        assertEquals("off",Robot(obj("""{"haState":{"switch.power":"off"}}""")).haState("switch.power"))
+    }
+
+    @Test fun repeatedWeightUsesTheVisitTimeAndCounterResetsDoNotInventVisits() {
+        val visits=listOf(HaPoint(0,"0"),HaPoint(100_000,"1"),HaPoint(200_000,"2"),HaPoint(300_000,"0"),HaPoint(400_000,"1"))
+        assertEquals(listOf(Reading(99_000,10.0),Reading(200_000,10.0),Reading(400_000,10.0)),haCatReadings(visits,listOf(HaPoint(99_000,"10")),"lb"))
+        val oneVisit=listOf(HaPoint(0,"0"),HaPoint(1_000_000,"1"))
+        assertEquals(listOf(Reading(1_000_000,10.0)),haCatReadings(oneVisit,listOf(HaPoint(0,"10")),null))
+        assertEquals(listOf(Reading(1_005_000,10.0)),haCatReadings(oneVisit,listOf(HaPoint(1_005_000,"10")),null))
+        assertTrue(haCatReadings(oneVisit,listOf(HaPoint(1_005_001,"10")),null).isEmpty())
+        assertTrue(haCatReadings(oneVisit,listOf(HaPoint(0,"0"),HaPoint(100,"unknown")),null).isEmpty())
+    }
+
 }

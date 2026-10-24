@@ -429,4 +429,82 @@ class LocalFormTest {
         compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Failed: Switch unavailable") }
     }
 
+    private fun verifiedLocalLogin(findRobot: Boolean) {
+        usesInstantTasks=true
+        androidx.arch.core.executor.ArchTaskExecutor.getInstance().setDelegate(object : androidx.arch.core.executor.TaskExecutor() {
+            override fun executeOnDiskIO(runnable: Runnable)=runnable.run()
+            override fun postToMainThread(runnable: Runnable)=runnable.run()
+            override fun isMainThread()=true
+        })
+        Repo.logout(); Repo.setMode(true); Repo.acceptIntro()
+        val values=mutableMapOf<String,String>()
+        val secrets=object : SecretStore {
+            override fun get(key: String)=values[key]
+            override fun set(key: String,value: String?) { if(value==null) values.remove(key) else values[key]=value }
+            override fun clear()=values.clear()
+        }
+        Repo::class.java.getDeclaredField("secrets").apply { isAccessible=true }.set(Repo,secrets)
+        val registry: (JsonObject)->JsonElement = { command -> json.parseToJsonElement(when {
+            !findRobot -> "[]"
+            command.s("type")=="config/device_registry/list" -> """[{"id":"r","name_by_user":"Workshop","model":"Litter Robot 4"}]"""
+            else -> """[{"entity_id":"sensor.status","device_id":"r","platform":"esphome","original_name":"Status"}]"""
+        }) }
+        HaSocket(sessions=if(findRobot) 6 else 4,result=registry,httpResponse={ path ->
+            if(path=="/api/states" && findRobot) """[{"entity_id":"sensor.status","state":"Ready"}]""" else "[]"
+        }).use { peer ->
+            show { Root() }
+            compose.mainClock.advanceTimeBy(1500)
+            compose.onNodeWithText("Connect Home Assistant").performClick()
+            compose.onNodeWithText("Home Assistant address").performScrollTo().performTextReplacement(peer.url)
+            compose.onNodeWithText("Long-lived access token").performScrollTo().performTextInput("test-token")
+            compose.onNodeWithText("Connect",substring=false).performScrollTo().performClick()
+            compose.waitUntil(10000) { compose.waitForIdle(); Repo.signedIn && !Repo.state.value.loading && compose.onAllNodesWithText("Home",substring=false).fetchSemanticsNodes().isNotEmpty() }
+            assertEquals("test-token",values["haToken"]); assertEquals(peer.url,Repo.email())
+            if(findRobot) {
+                assertEquals("Workshop",Repo.state.value.robots.single().name)
+                assertFalse(messages.any { "no Litter-Robot" in it })
+            } else {
+                assertTrue(Repo.state.value.robots.isEmpty())
+                assertTrue(messages.contains("Connected, but no Litter-Robot on the ESPHome firmware was found"))
+            }
+        }
+    }
+
+    @Test @Config(sdk=[35],qualifiers="w411dp-h891dp")
+    fun localLoginVerifiesTheRegistryAndReachesHomeWithTheDiscoveredRobot()=verifiedLocalLogin(true)
+
+    @Test @Config(sdk=[35],qualifiers="w411dp-h891dp")
+    fun localLoginWithoutACompatibleRobotExplainsTheEmptyHome()=verifiedLocalLogin(false)
+
+    @Test fun addingAPetReportsAnAdministratorFailureWithoutInventingANewPet() {
+        refuseTrackerChanges(); Repo.setUnits("lbs")
+        show { MainScreen(rememberNavController()) }
+        compose.onNodeWithText("Add a pet").performScrollTo().performClick()
+        compose.onNodeWithText("Name").performTextInput("Pixel")
+        compose.onNodeWithText("Weight (lbs)").performTextInput("9.5")
+        compose.onNodeWithText("Add",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Couldn't add: Admin permission required") }
+        assertFalse(Repo.state.value.pets.any { it.name=="Pixel" })
+    }
+
+    @Test fun addingAPetExplainsWhichRobotsHaveNoTrackerSlot() {
+        val field=Repo::class.java.getDeclaredField("ha").apply { isAccessible=true }
+        val original=(field.get(Repo) as LocalHa).backend
+        field.set(Repo,LocalHa(object : HaBackend by original {
+            override suspend fun ws(commands: List<JsonObject>): List<JsonElement?> = original.ws(commands).mapIndexed { index,result ->
+                if(commands[index].s("type")=="config/entity_registry/list") JsonArray(result!!.jsonArray.filter {
+                    !Regex("^(Set )?Cat [0-9]").containsMatchIn(it.jsonObject.s("original_name").orEmpty())
+                }) else result
+            }
+        }))
+        val robots=Repo.state.value.robots.map { it.name }
+        show { MainScreen(rememberNavController()) }
+        compose.onNodeWithText("Add a pet").performScrollTo().performClick()
+        compose.onNodeWithText("Name").performTextInput("Pixel")
+        compose.onNodeWithText("Weight (kg)").performTextInput("4.5")
+        compose.onNodeWithText("Add",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it.startsWith("Added, but no free slot on") } }
+        assertTrue(robots.all { it in messages.last() }); assertFalse(Repo.state.value.pets.any { it.name=="Pixel" })
+    }
+
 }
