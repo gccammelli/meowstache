@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -12,6 +14,32 @@ import kotlin.test.assertTrue
 
 class LocalModeTest {
     private val day = 86_400_000L
+
+    @Test fun demoEndpointsRejectUnknownEntitiesAndUnsupportedRegistryCommands() = runTest {
+        val demo=FakeHomeAssistant()
+        assertFailsWith<ApiException> { demo.get("/api/not-supported") }
+        assertFailsWith<ApiException> { demo.get("/api/states/sensor.missing") }
+        assertFailsWith<ApiException> { demo.post("/api/services/switch/turn_on","""{"entity_id":"switch.missing"}""") }
+        assertFailsWith<ApiException> { demo.ws(listOf(buildJsonObject { put("type","not-supported") })) }
+        assertFailsWith<ApiException> { demo.ws(listOf(buildJsonObject { put("type","config/entity_registry/update"); put("entity_id","missing") })) }
+        val template=json.parseToJsonElement(demo.post("/api/template","{}")).jsonArray
+        assertEquals(2,template.size)
+        assertTrue(template.all { it.jsonObject.getValue("entities").jsonArray.isNotEmpty() })
+        assertEquals(setOf("Robbie","Bobbie"),template.map { it.jsonObject.s("name") }.toSet())
+    }
+
+    @Test fun demoHistoryUsesTheDefaultDayWindowAndSkipsUnknownRequestedEntities() = runTest {
+        val now=nowMs(); val demo=FakeHomeAssistant(now)
+        val start=now-2*day
+        val path="/api/history/period/${kotlin.time.Instant.fromEpochMilliseconds(start)}?filter_entity_id=sensor.litter_robot_4_status,unknown"
+        val history=json.parseToJsonElement(demo.get(path)).jsonArray
+        assertEquals(1,history.size)
+        val rows=history.single().jsonArray.map { it.jsonObject }
+        assertTrue(rows.isNotEmpty()); assertEquals("sensor.litter_robot_4_status",rows.first().s("entity_id"))
+        assertTrue(rows.all { parseTs(it.s("last_changed")!!)!! in start..start+day })
+        assertTrue(rows.zipWithNext().all { (a,b) -> a.s("state")!=b.s("state") })
+        assertTrue(json.parseToJsonElement(demo.get("/api/history/period/invalid?filter_entity_id=unknown")).jsonArray.isEmpty())
+    }
 
     @Test
     fun currentUpstreamFirmwareStillMapsToMeowstache() {

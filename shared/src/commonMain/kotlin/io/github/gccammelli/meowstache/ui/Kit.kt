@@ -361,6 +361,7 @@ private val imageCache = LinkedHashMap<String, ImageBitmap>()
 @Composable
 fun NetImage(url: String?, modifier: Modifier, contentScale: ContentScale = ContentScale.Crop) {
     val bmp by produceState(url?.let { imageCache[it] }, url) {
+        value = url?.let { imageCache[it] }
         if (url != null && value == null) value = runCatching {
             // "res:" = bundled resource (the demo cats), otherwise a photo URL.
             val bytes = if (url.startsWith("res:")) Res.readBytes(url.removePrefix("res:")) else Repo.api.bytes(url)

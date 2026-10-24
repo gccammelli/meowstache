@@ -53,9 +53,8 @@ class Backoff(private val minMs: Long = 30_000, private val maxMs: Long = 30 * 6
  * Holds the live connection for as long as the caller runs it: [onAlive] on every message (keep-alives too),
  * [onChange] when a robot's state really changed. Reconnects only after [Backoff]'s wait, never right away.
  */
-suspend fun liveLoop(api: Api, onAlive: () -> Unit, onChange: () -> Unit) {
+suspend fun liveLoop(api: Api, onAlive: () -> Unit, onChange: () -> Unit, backoff: Backoff = Backoff()) {
     val filter = LiveFilter()
-    val backoff = Backoff()
     while (true) {
         val started = nowMs()
         try {

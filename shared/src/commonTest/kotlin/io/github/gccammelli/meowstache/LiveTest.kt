@@ -51,4 +51,13 @@ class LiveTest {
         t += 3_600_000
         assertTrue(g.allow()) // an hour later, free again
     }
+    @Test fun malformedRobotIdentifiersAndUnknownFieldsNeverTriggerAnAlertCheck() {
+        val filter=LiveFilter()
+        val unknown=kotlinx.serialization.json.JsonObject(emptyMap())
+        assertFalse(filter.changed(listOf(unknown,buildJsonObject { put("serial",kotlinx.serialization.json.JsonNull) })))
+        assertFalse(filter.changed(listOf(robot("ROBOT_IDLE",-50))))
+        assertFalse(filter.changed(listOf(buildJsonObject { put("serial","LR4X"); put("robotStatus","ROBOT_IDLE"); put("isOnline",kotlinx.serialization.json.JsonObject(emptyMap())) })))
+        assertTrue(filter.changed(listOf(robot("ROBOT_CLEAN",-50))))
+    }
+
 }
