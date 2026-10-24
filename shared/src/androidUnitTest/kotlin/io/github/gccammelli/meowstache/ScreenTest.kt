@@ -782,6 +782,38 @@ class ScreenTest {
         }
     }
 
+    @Test fun incompleteFirmwareDataShowsThatTheVersionCouldNotBeChecked() {
+        (Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue).putBoolean("demo",false)
+        val field=Repo::class.java.getDeclaredField("api").apply { isAccessible=true }; val original=field.get(Repo)
+        val jwt="header."+kotlin.io.encoding.Base64.UrlSafe.withPadding(kotlin.io.encoding.Base64.PaddingOption.ABSENT)
+            .encode("""{"mid":"owner","exp":4102444800}""".encodeToByteArray())+".sig"
+        val secrets=object : SecretStore {
+            override fun get(key: String)=if(key=="id") jwt else null
+            override fun set(key: String,value: String?)=Unit
+            override fun clear()=Unit
+        }
+        io.ktor.client.HttpClient(io.ktor.client.engine.mock.MockEngine {
+            respond("""{"data":{"litterRobot4CompareFirmwareVersion":{}}}""")
+        }).use { http ->
+            field.set(Repo,Api(Settings(),secrets,http))
+            try {
+                show("Firmware Updates") { FirmwareScreen(it) }
+                try {
+                    compose.waitUntil(5000) { compose.waitForIdle(); compose.onAllNodesWithText("Couldn't check").fetchSemanticsNodes().isNotEmpty() }
+                    compose.onNodeWithText("Up to date").assertDoesNotExist()
+                    compose.onNodeWithText("Install update on",substring=true).assertDoesNotExist()
+                } finally {
+                    System.getenv("MEOWSTACHE_FIRMWARE_EVIDENCE")?.let { path -> compose.runOnIdle {
+                        val view=compose.activity.window.decorView
+                        val bitmap=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
+                        view.draw(Canvas(bitmap))
+                        java.io.File(path).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+                    } }
+                }
+            } finally { field.set(Repo,original) }
+        }
+    }
+
     @Test fun visitSummaryWithoutRobotOrDurationKeepsUnavailableFeaturesExplicit() {
         val p=pet; val ts=nowMs()
         Repo.state.value=AppState(pets=listOf(p),weights=mapOf(p.id to listOf(Reading(ts,10.0))))

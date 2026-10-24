@@ -603,7 +603,9 @@ object Repo {
             latestFirmware { espFirmwareVersion picFirmwareVersion laserBoardFirmwareVersion } } }""",
             mapOf("serial" to robot.serial)).o("litterRobot4CompareFirmwareVersion")
         val l = f?.o("latestFirmware")
-        val needed = listOf("isEspFirmwareUpdateNeeded", "isPicFirmwareUpdateNeeded", "isLaserboardFirmwareUpdateNeeded").any { f?.b(it) == true }
+        val flags = listOf("isEspFirmwareUpdateNeeded", "isPicFirmwareUpdateNeeded", "isLaserboardFirmwareUpdateNeeded").map { f?.s(it)?.toBooleanStrictOrNull() }
+        val needed = flags.any { it == true }
+        if (!needed && flags.any { it == null }) return@runCatching null
         "ESP ${l?.s("espFirmwareVersion")} / PIC ${l?.s("picFirmwareVersion")} / TOF ${l?.s("laserBoardFirmwareVersion")}" +
             if (needed) "\nUpdate available" else "\nUp to date"
     }.getOrNull()

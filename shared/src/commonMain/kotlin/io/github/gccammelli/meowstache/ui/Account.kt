@@ -348,7 +348,7 @@ fun FirmwareScreen(nav: NavHostController) = Screen({ BackTopBar("Firmware Updat
                         Text(r.name, color = W.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Text("Version: ${r.raw.s("espFirmware") ?: "—"}", color = W.Text, fontSize = 12.sp)
                     }
-                    Text(when { l == null -> "Checking…"; "Update available" in l -> "Update available"; else -> "Up to date" },
+                    Text(when { l == null -> if (r.serial in latest.value) "Couldn't check" else "Checking…"; "Update available" in l -> "Update available"; else -> "Up to date" },
                         color = if (l != null && "Update available" in l) W.Accent else W.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
