@@ -950,4 +950,54 @@ class ScreenTest {
         compose.onNodeWithText("every 2 minutes",substring=true).assertExists()
     }
 
+    private fun visitVideoConnection(): AutoCloseable {
+        val snapshot=Repo.state.value
+        Repo.setMode(true)
+        Repo.state.value=snapshot
+        val prefs=Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue
+        prefs.putBoolean("demo",false)
+        val field=Repo::class.java.getDeclaredField("ha").apply { isAccessible=true }; val original=field.get(Repo)
+        val demo=FakeHomeAssistant()
+        field.set(Repo,LocalHa(object : HaBackend by demo {
+            override val base="https://home.example"
+            override suspend fun ws(commands: List<kotlinx.serialization.json.JsonObject>): List<kotlinx.serialization.json.JsonElement?> {
+                if(commands.all { it.s("type")=="media_source/resolve_media" }) return commands.map {
+                    kotlinx.serialization.json.buildJsonObject { put("url","/signed/"+it.s("media_content_id")!!.substringAfterLast('/')) }
+                }
+                return demo.ws(commands)
+            }
+        }))
+        return AutoCloseable { Repo.clips.value=emptyList(); field.set(Repo,original) }
+    }
+
+    @Test fun aPetVisitOpensItsSignedVideoPartsInTimeOrder() {
+        visitVideoConnection().use {
+            val ts=nowMs()
+            Repo.clips.value=listOf(Clip(ts+30_000,"media/second.mp4"),Clip(ts-30_000,"media/first.mp4"))
+            show("Visit video") { androidx.compose.foundation.layout.Column {
+                androidx.compose.material3.Text("Visit video"); ClipButton(ts,2.0)
+            } }
+            compose.onNodeWithContentDescription("Play the visit's video").performClick()
+            compose.waitUntil(5000) { compose.waitForIdle(); urls.isNotEmpty() }
+            assertEquals(listOf("https://home.example/signed/first.mp4"),urls)
+        }
+    }
+
+    @Test fun robotActivityCanPlayAClipAndReportsAnUnavailableVideoConnection() {
+        visitVideoConnection().use {
+            val ts=nowMs(); val r=robot
+            Repo.state.value=Repo.state.value.copy(acts=mapOf(r.serial to listOf(Act(ts,"catWeight","10.0"))),weights=emptyMap())
+            Repo.clips.value=listOf(Clip(ts,"media/visit.mp4"))
+            show(r.model) { RobotScreen(it,r.serial) }
+            compose.onNodeWithText("History",substring=false).performClick()
+            compose.onNodeWithContentDescription("Play the visit's video").performScrollTo().performClick()
+            compose.waitUntil(5000) { compose.waitForIdle(); urls.isNotEmpty() }
+            assertEquals("https://home.example/signed/visit.mp4",urls.single())
+            (Repo::class.java.getDeclaredField("prefs").apply { isAccessible=true }.get(Repo) as KeyValue).putBoolean("demo",true)
+            compose.onNodeWithContentDescription("Play the visit's video").performClick()
+            compose.waitUntil(5000) { compose.waitForIdle(); messages.any { it=="Couldn't open the video: Visit videos aren't connected" } }
+            assertEquals(1,urls.size)
+        }
+    }
+
 }

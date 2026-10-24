@@ -378,4 +378,55 @@ class LocalFormTest {
         assertFalse(Repo.signedIn)
         compose.onNodeWithText("Home Assistant address").assertExists()
     }
+    @Test fun editingSleepAndWakeTimesEnablesTheDayAndPersistsBothValues() {
+        val r=Repo.state.value.robots.first()
+        show { RobotScreen(rememberNavController(),r.serial) }
+        compose.onNodeWithText("Controls").performClick()
+        compose.onNodeWithText("Sleep Mode",substring=false).performScrollTo().performClick()
+        val day=r.raw.o("weekdaySleepModeEnabled")!!.o("Monday")!!
+        val sleep=day.i("sleepTime")!!; val wake=day.i("wakeTime")!!
+        compose.onAllNodesWithText("%02d:%02d".format(sleep/60,sleep%60)).onFirst().performClick()
+        compose.onNodeWithText("Monday sleep time").assertExists()
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("23")
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("45")
+        compose.onNodeWithText("OK").performClick()
+        compose.onAllNodesWithText("%02d:%02d".format(wake/60,wake%60)).onFirst().performClick()
+        compose.onNodeWithText("Monday wake time").assertExists()
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("6")
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("15")
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Save",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Sleep schedule saved") }
+        val saved=Repo.state.value.robots.first().raw.o("weekdaySleepModeEnabled")!!.o("Monday")!!
+        assertEquals(1425,saved.i("sleepTime")); assertEquals(375,saved.i("wakeTime")); assertTrue(saved.b("isEnabled"))
+    }
+
+    @Test fun firmwareSwitchesSendBothDirectionsAndReportRejectedChanges() {
+        val r=Repo.state.value.robots.first()
+        val field=Repo::class.java.getDeclaredField("ha").apply { isAccessible=true }
+        val original=(field.get(Repo) as LocalHa).backend
+        val calls=java.util.concurrent.ConcurrentLinkedQueue<String>()
+        var fail=false
+        field.set(Repo,LocalHa(object : HaBackend by original {
+            override suspend fun post(path: String,body: String): String {
+                calls+=path
+                if(fail) throw ApiException("Switch unavailable")
+                return original.post(path,body)
+            }
+        }))
+        show { DeviceSettingsScreen(rememberNavController(),r.serial) }
+        compose.onNodeWithText("ESPHome firmware").performScrollTo()
+        val switches=compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size
+        assertTrue(switches>0)
+        repeat(2) { pass ->
+            repeat(switches) { index -> compose.onAllNodes(isToggleable())[index].performScrollTo().performClick() }
+            compose.waitUntil(5000) { compose.waitForIdle(); calls.size >= (pass+1)*switches }
+            compose.mainClock.advanceTimeBy(1500); compose.waitForIdle()
+        }
+        assertTrue(calls.any { it.endsWith("turn_on") }); assertTrue(calls.any { it.endsWith("turn_off") })
+        fail=true
+        compose.onAllNodes(isToggleable()).onFirst().performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Failed: Switch unavailable") }
+    }
+
 }
