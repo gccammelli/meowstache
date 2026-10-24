@@ -2,14 +2,17 @@ package io.github.gccammelli.meowstache
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import io.ktor.client.engine.mock.respond
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import io.github.gccammelli.meowstache.ui.*
 import org.junit.Rule
 import org.junit.Test
@@ -93,5 +96,59 @@ class UiKitTest {
         assertNull(selected); assertFalse(dismissed)
         compose.onNodeWithText("Save").performClick()
         assertEquals(setOf("Errors"),selected); assertTrue(dismissed)
+    }
+
+    @Test @Config(qualifiers="w411dp-h891dp-night")
+    fun systemNightModeUsesDarkColorsForChartsAndControls() {
+        compose.setContent { AppTheme {
+            Column {
+                Segmented(listOf("First","Second"),0,{},dark=true)
+                Chart(listOf(1.0),listOf("Today"),ChartKind.LINE)
+                Legend("Visits" to W.Teal,"Average" to W.Purple,dashedLast=false)
+            }
+        } }
+        draw(); assertTrue(W.dark)
+        compose.onNodeWithText("Average").assertExists()
+        compose.onNodeWithText("First").assertIsSelected()
+    }
+
+    @Test fun loadedAvatarsAreReusedAndThePhotoCacheStaysBounded() {
+        val pictures=listOf("mochi","luna").map { java.io.File("src/commonMain/composeResources/files/demo/$it.jpg").readBytes() }
+        val calls=mutableListOf<String>()
+        var url by mutableStateOf("https://photos.example/0")
+        val apiField=Repo::class.java.getDeclaredField("api").apply { isAccessible=true }
+        val original=apiField.get(Repo)
+        @Suppress("UNCHECKED_CAST")
+        val cache=Class.forName("io.github.gccammelli.meowstache.ui.KitKt").getDeclaredField("imageCache").apply { isAccessible=true }.get(null) as MutableMap<String,Any>
+        cache.clear()
+        val storage=androidStorage(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        io.ktor.client.HttpClient(io.ktor.client.engine.mock.MockEngine { request ->
+            calls+=request.url.toString()
+            respond(pictures[if(request.url.encodedPath=="/0") 0 else 1])
+        }).use { http ->
+            apiField.set(Repo,Api(storage.auth,storage.secrets,http))
+            try {
+                compose.setContent { AppTheme { NetImage(url,Modifier.size(240.dp)) } }
+                compose.waitUntil(5000) { compose.waitForIdle(); cache.containsKey(url) }
+                for(i in 1..24) {
+                    compose.runOnIdle { url="https://photos.example/$i" }
+                    try { compose.waitUntil(5000) { compose.waitForIdle(); cache.containsKey(url) } }
+                    finally {
+                        if(i==1) System.getenv("MEOWSTACHE_AVATAR_EVIDENCE")?.let { path -> compose.runOnIdle {
+                            val view=compose.activity.window.decorView
+                            val bitmap=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
+                            view.draw(Canvas(bitmap))
+                            java.io.File(path).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+                        } }
+                    }
+                }
+                assertEquals(24,cache.size); assertFalse(cache.containsKey("https://photos.example/0"))
+                compose.runOnIdle { url="https://photos.example/1" }
+                compose.waitForIdle(); draw()
+                assertEquals(1,calls.count { it=="https://photos.example/1" })
+                compose.runOnIdle { url="https://photos.example/0" }
+                compose.waitUntil(5000) { compose.waitForIdle(); calls.count { it==url }==2 && cache.containsKey(url) }
+            } finally { apiField.set(Repo,original); cache.clear() }
+        }
     }
 }

@@ -11,14 +11,18 @@ import kotlin.concurrent.thread
 import kotlin.test.*
 
 /** A loopback-only WebSocket peer: exercises the real Ktor client without a Home Assistant. */
-private class HaSocket(private val authenticate: Boolean = true, private val reject: Boolean = false) : AutoCloseable {
+internal class HaSocket(
+    private val authenticate: Boolean = true, private val reject: Boolean = false,
+    private val sessions: Int = 1, private val commandsPerSession: Int = 2,
+    private val result: ((JsonObject) -> JsonElement?)? = null,
+) : AutoCloseable {
     private val listener = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
     val url = "http://localhost:${listener.localPort}"
     val received = mutableListOf<JsonObject>()
     private var failure: Throwable? = null
     private val worker = thread(isDaemon = true) {
         try {
-            listener.accept().use { socket ->
+            repeat(sessions) { listener.accept().use { socket ->
                 socket.soTimeout = 5000
                 val input = socket.getInputStream()
                 val output = socket.getOutputStream()
@@ -52,18 +56,25 @@ private class HaSocket(private val authenticate: Boolean = true, private val rej
                 next()
                 send(if (authenticate) "{\"type\":\"auth_ok\"}" else "{\"type\":\"auth_invalid\"}")
                 if (authenticate) {
-                    repeat(if (reject) 1 else 2) {
+                    repeat(if (reject) 1 else commandsPerSession) {
                         val c = next()
                         val id = c.getValue("id")
                         if (reject) send("{\"id\":$id,\"success\":false,\"error\":{\"message\":\"operation denied\"}}")
-                        else {
+                        else if (result != null) {
+                            val reply = try {
+                                buildJsonObject { put("id", id); put("success", true); put("result", result.invoke(c) ?: JsonNull) }
+                            } catch (error: ApiException) {
+                                buildJsonObject { put("id", id); put("success", false); put("error", buildJsonObject { put("message", error.message) }) }
+                            }
+                            send(reply.toString())
+                        } else {
                             send("{\"id\":999,\"success\":true,\"result\":\"unrelated\"}")
                             send("{\"id\":$id,\"success\":true,\"result\":{\"command\":${c.getValue("type")}}}")
                         }
                     }
                 }
                 output.write(byteArrayOf(0x88.toByte(), 0)); output.flush()
-            }
+            } }
         } catch (e: Throwable) { failure = e }
     }
     override fun close() {
