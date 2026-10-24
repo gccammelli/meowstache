@@ -108,4 +108,50 @@ class HistoryBoundaryTest {
         assertTrue(detectPatterns(emptyList(),emptyMap(),day,zone).isEmpty())
         assertTrue(detectPatterns(readings,emptyMap(),day.minusDays(50),zone).isEmpty())
     }
+    @Test fun weightPatternsRequireEnoughBaselineAndClearBothMagnitudeAndVariation() {
+        fun readings(value: Double,varied: Boolean=false)= (1..28).map { days ->
+            Reading(now-days*oneDay,if(varied && days%2==0) 8.0 else if(varied) 12.0 else 10.0)
+        }+Reading(now,value)
+        for((value,significant) in listOf(10.29 to null,10.31 to false,10.51 to true)) {
+            val pattern=detectPatterns(readings(value),emptyMap(),day,zone).singleOrNull { it.metric==Metric.WEIGHT }
+            assertEquals(significant,pattern?.significant)
+        }
+        assertTrue(detectPatterns(readings(10.51,true),emptyMap(),day,zone).none { it.metric==Metric.WEIGHT })
+        assertEquals(false,detectPatterns(readings(14.5,true),emptyMap(),day,zone).single { it.metric==Metric.WEIGHT }.significant)
+        assertEquals(true,detectPatterns(readings(15.5,true),emptyMap(),day,zone).single { it.metric==Metric.WEIGHT }.significant)
+        val sparse=listOf(Reading(now-28*oneDay,10.0),Reading(now-7*oneDay,10.0),Reading(now,15.0))
+        assertTrue(detectPatterns(sparse,emptyMap(),day,zone).none { it.metric==Metric.WEIGHT })
+    }
+
+    @Test fun targetCrossingsDistinguishArrivalFromAboveFromMovingAway() {
+        val settings=AlertSettings(targets=mapOf("pet" to Target(11.0,0)))
+        fun notices(before: Double,after: Double)=evaluateAlerts(now,listOf("pet" to "Mochi"),
+            mapOf("pet" to listOf(Reading(now-oneDay,before),Reading(now,after))),settings,fmt,zone)
+        assertTrue(notices(12.0,10.0).single().body.endsWith("target from above."))
+        assertTrue(notices(12.0,13.0).isEmpty()); assertTrue(notices(9.0,10.0).isEmpty()); assertTrue(notices(11.0,10.0).isEmpty())
+    }
+
+    @Test fun maintenanceAndOfflineRemindersNeedKnownElapsedTimeAndEnabledTopics() {
+        val topics=RobotTopics(usage=true,drawerFull=false,maintenance=true,errors=true)
+        val robot=RobotSnapshot("r","Robbie",true,null,null,null,emptyList())
+        for(setup in listOf<Long?>(null,now+oneDay,now,now-30*oneDay)) {
+            assertTrue(robotAlerts(now,robot.copy(setup=setup),topics,zone).isEmpty())
+        }
+        assertTrue(robotAlerts(now,robot.copy(online=false),topics,zone).isEmpty())
+        assertTrue(robotAlerts(now,robot.copy(online=false,lastSeen=now-30*minute),topics,zone).isEmpty())
+    }
+
+    @Test fun chartMarksMatchTheRequestedMetricAndNeverInventMonthlyPatterns() {
+        val b=buckets(Range.WEEK,day,null)
+        val up=Pattern(Metric.WEIGHT,b[0].start,10.0,11.0,true)
+        val down=Pattern(Metric.WEIGHT,b[1].start,11.0,10.0,true)
+        val visits=Pattern(Metric.VISITS,b[2].start,2.0,4.0,true)
+        val patterns=mapOf(b[0].start to listOf(up),b[1].start to listOf(down),b[2].start to listOf(visits))
+        val expected=listOf(1,-1,0,0,0,0,0)
+        assertEquals(expected,io.github.gccammelli.meowstache.ui.marksFor(b,Range.WEEK,patterns,Metric.WEIGHT))
+        assertEquals(expected,io.github.gccammelli.meowstache.ui.marksFor(b,Range.MONTH,patterns,Metric.WEIGHT))
+        assertTrue(io.github.gccammelli.meowstache.ui.marksFor(b,Range.YEAR,patterns,Metric.WEIGHT).isEmpty())
+        assertEquals("Jan 2026 – Feb 2026",io.github.gccammelli.meowstache.ui.rangeTitleFor(LocalDate(2026,1,1),LocalDate(2026,2,15)))
+    }
+
 }

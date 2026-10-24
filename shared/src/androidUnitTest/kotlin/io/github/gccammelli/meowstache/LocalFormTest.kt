@@ -507,4 +507,31 @@ class LocalFormTest {
         assertTrue(robots.all { it in messages.last() }); assertFalse(Repo.state.value.pets.any { it.name=="Pixel" })
     }
 
+    @Test fun editingOnlyTrackerWeightInPoundsDoesNotRenameTheCat() {
+        Repo.setUnits("lbs"); val pet=Repo.state.value.pets.first()
+        show { PetProfileScreen(rememberNavController(),pet.id) }
+        compose.onNodeWithText("Edit Profile").performScrollTo().performClick()
+        compose.onNodeWithText("Set tracker weight (lbs)").performTextInput("11.25")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); Repo.state.value.pets.first { it.id==pet.id }.referenceLbs==11.25 }
+        assertEquals(pet.name,Repo.state.value.pets.first { it.id==pet.id }.name)
+        assertFalse(messages.any { it.startsWith("Renamed to") })
+        compose.onNodeWithText("Edit Profile").performClick()
+        compose.onNodeWithText("Name").performTextReplacement(" ")
+        compose.onNodeWithText("Set tracker weight (lbs)").performTextInput("0")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitForIdle(); assertEquals(11.25,Repo.state.value.pets.first { it.id==pet.id }.referenceLbs!!,0.001)
+    }
+
+    @Test fun replacingTheFilterRecordsThePhoneReminderAndSendsTheFirmwareCommand() {
+        val r=Repo.state.value.robots.first()
+        show { RobotScreen(rememberNavController(),r.serial) }
+        compose.onNodeWithText("Controls").performClick()
+        compose.onNodeWithText("Replace Filter").performScrollTo().performClick()
+        compose.onNodeWithText("firmware's Replace Filter",substring=true).assertExists()
+        compose.onNodeWithText("Replaced",substring=false).performClick()
+        compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Sent") }
+        assertNotNull(Repo.local.value.filterAt[r.serial])
+    }
+
 }

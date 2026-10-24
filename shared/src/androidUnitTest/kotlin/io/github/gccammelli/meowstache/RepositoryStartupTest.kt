@@ -114,4 +114,18 @@ class RepositoryStartupTest {
         } finally { stop(); Repo.logout(); apiField.set(Repo,null); Dispatchers.resetMain() }
     }
 
+    @Test fun defaultStoreRegionFollowsThePhonesCountryUntilTheOwnerChoosesOne() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val original=java.util.Locale.getDefault()
+        try {
+            boot(emptyMap())
+            for((country,expected) in listOf("CA" to "Canada (English)","GB" to "United Kingdom","IT" to "Europe","AU" to "United States")) {
+                java.util.Locale.setDefault(java.util.Locale("en",country))
+                Repo.updateLocal { it.copy(region="") }; assertEquals(expected,Repo.region())
+                Repo.updateLocal { it.copy(region="Canada (French)") }; assertEquals("Canada (French)",Repo.region())
+            }
+            Repo.onLogin(); assertFalse(Repo.api.isLoggedIn)
+        } finally { java.util.Locale.setDefault(original); stop(); Repo.logout(); apiField.set(Repo,null); Dispatchers.resetMain() }
+    }
+
 }

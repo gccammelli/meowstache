@@ -38,7 +38,9 @@ class RepositoryNetworkTest {
         var commandError = false
         var historyError = false
         var userError = false
-        var hopperAccepted = true
+        var robotError: Exception?=null
+        var hopperDetails="""{"success":true}"""
+        var triggerDetails="""{"isUpdateTriggered":true}"""
         var firmwareDetails = """{"isEspFirmwareUpdateNeeded":true,"latestFirmware":{"espFirmwareVersion":"2.0","picFirmwareVersion":"3.0","laserBoardFirmwareVersion":"4.0"}}"""
         var firmwareError = false
         HttpClient(MockEngine { request ->
@@ -50,13 +52,16 @@ class RepositoryNetworkTest {
                 calls += query
                 if(historyError && ("getWeightHistoryByPetId" in query || "getLitterRobot4Activity" in query)) throw ApiException("History temporarily unavailable")
                 val data = when {
-                    "getLitterRobot4ByUser" in query -> """{"getLitterRobot4ByUser":[{},$rawRobot]}"""
+                    "getLitterRobot4ByUser" in query -> {
+                        robotError?.let { throw it }
+                        """{"getLitterRobot4ByUser":[{},$rawRobot]}"""
+                    }
                     "getPetsByUser" in query -> """{"getPetsByUser":[${pet.raw}]}"""
                     "getWeightHistoryByPetId" in query -> """{"getWeightHistoryByPetId":[{"weight":10.0,"timestamp":"$timestamp"},{},{"timestamp":"invalid","weight":99},{"timestamp":"$timestamp"}]}"""
                     "getLitterRobot4Activity" in query -> """{"getLitterRobot4Activity":[{"timestamp":"$timestamp","value":"catWeight","actionValue":"10.0"},{},{"timestamp":"invalid","value":"catWeight"},{"timestamp":"$timestamp"}]}"""
                     "sendLitterRobot4Command" in query -> """{"sendLitterRobot4Command":"${if(commandError) "Error: refused" else "ok"}"}"""
-                    "toggleHopper" in query -> """{"toggleHopper":{"success":$hopperAccepted}}"""
-                    "litterRobot4TriggerFirmwareUpdate" in query -> """{"litterRobot4TriggerFirmwareUpdate":{"isUpdateTriggered":true}}"""
+                    "toggleHopper" in query -> """{"toggleHopper":$hopperDetails}"""
+                    "litterRobot4TriggerFirmwareUpdate" in query -> """{"litterRobot4TriggerFirmwareUpdate":$triggerDetails}"""
                     "litterRobot4CompareFirmwareVersion" in query -> {
                         if(firmwareError) throw ApiException("Version lookup unavailable")
                         """{"litterRobot4CompareFirmwareVersion":$firmwareDetails}"""
@@ -92,9 +97,15 @@ class RepositoryNetworkTest {
                 commandError = true; assertTrue(Repo.command(robot, "startCycle").isFailure)
                 assertTrue(Repo.rename(robot, "New nickname").isSuccess)
                 assertTrue(Repo.toggleHopper(robot, true).isSuccess)
-                hopperAccepted=false
-                assertEquals("Hopper not changed",Repo.toggleHopper(robot,false).exceptionOrNull()!!.message)
+                for(details in listOf("null","{}","{\"success\":false}")) {
+                    hopperDetails=details
+                    assertEquals("Hopper not changed",Repo.toggleHopper(robot,false).exceptionOrNull()!!.message)
+                }
                 assertEquals(true, Repo.triggerFirmwareUpdate(robot).getOrThrow())
+                for(details in listOf("null","{}","{\"isUpdateTriggered\":false}")) {
+                    triggerDetails=details
+                    assertEquals(false,Repo.triggerFirmwareUpdate(robot).getOrThrow())
+                }
                 assertTrue(Repo.latestFirmware(robot)!!.contains("Update available"))
                 for(flag in listOf("isPicFirmwareUpdateNeeded","isLaserboardFirmwareUpdateNeeded")) {
                     firmwareDetails="""{"$flag":true}"""
@@ -123,6 +134,15 @@ class RepositoryNetworkTest {
                 assertTrue(Repo.importBackup(backup) > 0)
                 assertNotNull(storage.files.read("history2.json"))
                 assertTrue(calls.any { "getLitterRobot4Activity" in it })
+                val preserved=Repo.state.value.weights
+                for(failure in listOf(ApiException("Robot lookup unavailable"),AuthException("Refresh temporarily rejected"),Exception())) {
+                    robotError=failure
+                    Repo.refresh()
+                    assertEquals(failure.message ?: failure.toString(),Repo.state.value.error)
+                    assertFalse(Repo.state.value.loading); assertFalse(Repo.state.value.historyLoading)
+                    assertEquals(preserved,Repo.state.value.weights)
+                    assertTrue(Repo.api.isLoggedIn)
+                }
                 Repo.logout()
                 assertFalse(Repo.signedIn)
                 assertFailsWith<AuthException> { Repo.refresh() }

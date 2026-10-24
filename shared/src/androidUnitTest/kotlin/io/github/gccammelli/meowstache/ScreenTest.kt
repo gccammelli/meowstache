@@ -1066,4 +1066,121 @@ class ScreenTest {
         }
     }
 
+    @Test fun unreadMessagesOpenFromHomeAndBecomeReadWithoutLosingTheirContents() {
+        Repo.addMessage(Message(123,"Drawer needs emptying","Robbie's drawer is full")); Repo.acceptIntro()
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme { Root() } } }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithContentDescription("Messages").performClick()
+        compose.onNodeWithText("Drawer needs emptying").assertExists()
+        assertTrue(Repo.messages.value.all { it.read })
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Home",substring=false).assertExists()
+        assertEquals("Robbie's drawer is full",Repo.messages.value.single().body)
+    }
+
+    @Test fun cloudProfileEditingExplainsTheApiLimitAndCanBeHidden() {
+        val id=pet.id
+        show(pet.name) { PetProfileScreen(it,id); UnavailableDialog() }
+        compose.onNodeWithText("Edit Profile").performScrollTo().performClick()
+        compose.onNodeWithText("Only in Whisker's app").assertExists()
+        compose.onNodeWithText("Hide unavailable features").performClick()
+        compose.onNodeWithText("Edit Profile").assertDoesNotExist()
+        assertTrue(Repo.state.value.pets.any { it.id==id })
+    }
+
+    @Test fun personalityNotesAreSavedOnlyAfterConfirmationAndCanBeCleared() {
+        val id=pet.id
+        show(pet.name) { PetProfileScreen(it,id) }
+        compose.onNodeWithText("Personality").performScrollTo().performClick()
+        compose.onNodeWithText("Curious").performClick(); compose.onNodeWithText("Shy").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertTrue(Repo.local.value.petNotes[id]?.personality.orEmpty().isEmpty())
+        compose.onNodeWithText("Personality").performClick()
+        compose.onAllNodesWithText("Vocal").filter(hasAnyAncestor(isDialog())).onFirst().performClick(); compose.onNodeWithText("Save").performClick()
+        assertEquals(listOf("Vocal"),Repo.local.value.petNotes[id]?.personality)
+        compose.onNodeWithText("Personality").performClick()
+        compose.onAllNodesWithText("Vocal").filter(hasAnyAncestor(isDialog())).onFirst().performClick(); compose.onNodeWithText("Save").performClick()
+        assertEquals(emptyList<String>(),Repo.local.value.petNotes[id]?.personality)
+        compose.onNodeWithText("Adoption Details").performScrollTo().performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Feeding Time").performScrollTo().performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals("",Repo.local.value.petNotes[id]?.adoptionDetails)
+    }
+
+    @Test fun cloudPetMenuExplainsEditingWithoutRemovingThePetOrInventingARecentWeight() {
+        val p=Pet(JsonObject(pet.raw-"lastWeightReading"))
+        Repo.state.value=Repo.state.value.copy(pets=listOf(p),weights=emptyMap(),acts=emptyMap())
+        show("Home") { MainScreen(it) }
+        compose.onNodeWithContentDescription("Pets").performClick()
+        compose.onNodeWithText("Last Weight: —").assertExists()
+        compose.onNodeWithContentDescription("Show menu").performClick()
+        compose.onNodeWithText("Editing or removing pets isn't available through the public API.").assertExists()
+        compose.onNodeWithText("OK").performClick()
+        assertEquals(listOf(p),Repo.state.value.pets)
+    }
+
+    @Test fun optionalRobotSettingsExplainHiddenEntitiesAndDistinguishBlankLitterDetails() {
+        localHome(); val serial=robot.serial
+        show("Device Settings") { DeviceSettingsScreen(it,serial) }
+        for((surface,label) in listOf("CARPET" to "Carpet",null to "Unknown","TILE" to "Wood/Tile")) {
+            compose.runOnIdle { robotValues("surfaceType" to surface) }
+            compose.onNodeWithText("Floor Surface: $label").performScrollTo().assertIsDisplayed()
+        }
+        compose.runOnIdle { Repo.updateLocal { it.copy(litter=mapOf(serial to Litter("",""))) } }
+        compose.onNodeWithText("Brand: —").performScrollTo().assertExists()
+        compose.onNodeWithText("Formulation:",substring=true).assertDoesNotExist()
+        compose.runOnIdle { Repo.updateLocal { it.copy(litter=mapOf(serial to Litter("Test brand","Clay"))) } }
+        compose.onNodeWithText("Formulation: Clay").performScrollTo().assertExists()
+        for(role in listOf("switch.hopper","switch.auto_cycle","time.monday_sleep_time","time.monday_wake_time","switch.monday_sleep_schedule")) {
+            compose.runOnIdle {
+                val changed=Robot(JsonObject(robot.raw+("haHidden" to kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive(role))))))
+                Repo.state.value=Repo.state.value.copy(robots=listOf(changed))
+            }
+            compose.onNodeWithText("More controls in Home Assistant").performScrollTo().assertExists()
+        }
+        compose.runOnIdle { Repo.setShowUnavailable(false) }
+        compose.onNodeWithText("Warranty").assertDoesNotExist()
+    }
+
+    @Test fun unknownCloudSleepTimesRemainReadOnlyAndExplicitlyUnreported() {
+        val serial=robot.serial
+        Repo.state.value=Repo.state.value.copy(robots=listOf(Robot(JsonObject(robot.raw-"weekdaySleepModeEnabled"))))
+        show(robot.model) { RobotScreen(it,serial) }
+        compose.onNodeWithText("Controls").performClick()
+        compose.onNodeWithText("Sleep Mode").performScrollTo().performClick()
+        compose.onAllNodesWithText("00:00").assertCountEquals(4)
+        compose.onAllNodes(isToggleable()).filter(hasAnyAncestor(isDialog())).assertCountEquals(0)
+        compose.onNodeWithText("Editing the schedule isn't available through the public API yet.").assertExists()
+        compose.runOnIdle {
+            Repo.state.value=Repo.state.value.copy(robots=listOf(Robot(JsonObject(robot.raw+("weekdaySleepModeEnabled" to json.parseToJsonElement("""{"Monday":{"isEnabled":false},"Saturday":{"sleepTime":1320}}"""))))))
+        }
+        compose.onAllNodesWithText("00:00").assertCountEquals(3)
+        compose.onNodeWithText("22:00").assertExists()
+        compose.onNodeWithText("Close").performClick()
+    }
+
+    @Test fun localSleepDefaultsCanBeCancelledOrSavedUnchangedAndFailedChangesAreReported() {
+        localHome(); val serial=robot.serial
+        Repo.state.value=Repo.state.value.copy(robots=listOf(Robot(JsonObject(robot.raw-"weekdaySleepModeEnabled"))))
+        val field=Repo::class.java.getDeclaredField("ha").apply { isAccessible=true }; val original=field.get(Repo)
+        val demo=FakeHomeAssistant()
+        field.set(Repo,LocalHa(object : HaBackend by demo {
+            override suspend fun post(path: String,body: String): String = throw ApiException("Sleep service offline")
+        }))
+        try {
+            show(robot.model) { RobotScreen(it,serial) }
+            compose.onNodeWithText("Controls").performClick()
+            compose.onNodeWithText("Sleep Mode").performScrollTo().performClick()
+            compose.onAllNodesWithText("22:00").assertCountEquals(7); compose.onAllNodesWithText("06:00").assertCountEquals(7)
+            compose.onNodeWithText("Save").performClick()
+            compose.waitForIdle(); assertTrue(messages.isEmpty())
+            compose.onNodeWithText("Sleep Mode").performClick()
+            compose.onAllNodes(isToggleable()).filter(hasAnyAncestor(isDialog())).onFirst().performClick()
+            compose.onNodeWithText("Save").performClick()
+            compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Failed: Sleep service offline") }
+            assertFalse(messages.contains("Sleep schedule saved"))
+        } finally { field.set(Repo,original) }
+    }
+
 }
