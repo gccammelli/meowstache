@@ -50,7 +50,7 @@ class AlertIntegrationTest {
         val robot=Robot(buildJsonObject { put("serial","r"); put("name","Kitchen") })
         val pet=Pet(buildJsonObject { put("petId","cat"); put("name","Mochi") })
         val state=AppState(robots=listOf(robot),pets=listOf(pet),weights=mapOf(pet.id to listOf(Reading(now,10.0))),
-            acts=mapOf(robot.serial to listOf(Act(now,"catWeight","10.0"),Act(now-180_000,"catWeight","unknown"))))
+            acts=mapOf(robot.serial to listOf(Act(now,"catWeight","10.0"),Act(now-180_000,"catWeight","unknown"),Act(now-200_000,"catWeight"))))
         val original=Repo.state.value
         try {
             Repo.state.value=state

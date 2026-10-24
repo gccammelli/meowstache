@@ -176,4 +176,26 @@ class ApiTest {
             assertFailsWith<ApiException> { Api(Settings(),secrets,http).gql("https://example.test/graphql","query") }
         }
     }
+    @Test fun aBurstBeyondTheRequestBudgetStopsBeforeAnotherHttpRequest() = runTest {
+        var calls=0
+        HttpClient(MockEngine { calls++; respond("""{"data":{"ok":true}}""") }).use { http ->
+            val api=Api(Settings(),Secrets().apply { set("id",token()) },http)
+            repeat(60) { assertTrue(api.gql("https://example.test/graphql","query").b("ok")) }
+            assertEquals("Paused for a few minutes to go easy on Whisker's servers",assertFailsWith<ApiException> {
+                api.gql("https://example.test/graphql","query")
+            }.message)
+            assertEquals(60,calls)
+        }
+    }
+
+    @Test fun partialGraphqlDataRemainsUsableAndStringListsIgnoreNonPrimitiveEntries() = runTest {
+        HttpClient(MockEngine { respond("""{"data":{"known":"value"},"errors":[{"message":"optional field unavailable"}]}""") }).use { http ->
+            val data=Api(Settings(),Secrets().apply { set("id",token()) },http).gql("https://example.test/graphql","query")
+            assertEquals("value",data.s("known"))
+        }
+        val shapes=json.parseToJsonElement("""{"missingType":{},"values":["A",null,{},[],"B",2,true]}""").jsonObject
+        assertEquals(emptyList(),shapes.strings("absent")); assertEquals(emptyList(),shapes.strings("missingType"))
+        assertEquals(listOf("A","B","2","true"),shapes.strings("values"))
+    }
+
 }

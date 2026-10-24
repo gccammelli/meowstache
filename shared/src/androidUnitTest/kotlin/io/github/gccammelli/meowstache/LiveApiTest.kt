@@ -88,13 +88,15 @@ class LiveApiTest {
     @Test fun subscriptionAuthenticatesAndSeparatesKeepAlivesFromRobotUpdates() = runTest {
         val updates=mutableListOf<List<JsonObject>>(); var alive=0
         Peer(listOf("""{"type":"ka"}""","""{"type":"data","payload":{}}""",
+            """{"type":"data"}""","""{"type":"data","payload":{"data":{}}}""",
+            """{"type":"data","payload":{"data":{"litterRobot4StateSubscriptionByUser":{}}}}""",
             """{"type":"data","payload":{"data":{"litterRobot4StateSubscriptionByUser":{"robots":[null,42,{"serial":"robot","isOnline":true}]}}}}""",
             """{"type":"data","payload":{"data":{"litterRobot4StateSubscriptionByUser":{"robots":{}}}}}""",
             """{"type":"complete"}"""),binary=true).use { peer ->
             HttpClient { install(WebSockets) }.use { http ->
                 withContext(Dispatchers.IO) { withTimeout(5000) { api(http,peer.endpoint).liveRobots({ alive++ }) { updates+=it } } }
             }
-            assertEquals(6,alive); assertEquals(2,updates.size)
+            assertEquals(9,alive); assertEquals(2,updates.size)
             assertEquals("robot",updates.first().single().s("serial")); assertTrue(updates.last().isEmpty())
             assertTrue(peer.handshake.contains("Sec-WebSocket-Protocol: graphql-ws",true))
             assertEquals("start",peer.request!!.s("type"))

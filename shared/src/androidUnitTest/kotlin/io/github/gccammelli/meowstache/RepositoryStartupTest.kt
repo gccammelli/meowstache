@@ -128,4 +128,37 @@ class RepositoryStartupTest {
         } finally { java.util.Locale.setDefault(original); stop(); Repo.logout(); apiField.set(Repo,null); Dispatchers.resetMain() }
     }
 
+    @Test fun aSavedCloudDemoResumesWithoutMakingAnAuthenticatedRequest() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            val storage=boot(mapOf("mode" to "cloud"))
+            stop(); apiField.set(Repo,null)
+            storage.settings.putBoolean("demo",true)
+            Repo.init(storage)
+            assertTrue(Repo.demo); assertTrue(Repo.signedIn); assertFalse(Repo.canCheckAlerts)
+            val state=Repo.state.value
+            assertTrue(state.robots.isNotEmpty()); assertTrue(state.pets.isNotEmpty())
+            Repo.refresh(); assertSame(state,Repo.state.value)
+        } finally { stop(); Repo.logout(); apiField.set(Repo,null); Dispatchers.resetMain() }
+    }
+
+    @Test fun signingBackIntoTheSameAccountKeepsCachedHistoryAndPhoneNotes() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            val token="header."+kotlin.io.encoding.Base64.UrlSafe.withPadding(kotlin.io.encoding.Base64.PaddingOption.ABSENT)
+                .encode("""{"mid":"owner","exp":4102444800}""".encodeToByteArray())+".sig"
+            val storage=boot(mapOf("owner" to "owner","messages" to """[{"ts":1,"title":"Saved","body":"Keep this"}]""",
+                "local" to json.encodeToString(LocalData(overrides=mapOf(123L to "cat")))),
+                mutableMapOf("id" to token,"refresh" to "saved-refresh"),"""{"weights":{"cat":[{"ts":123,"lbs":10.0}]}}""")
+            repeat(2) {
+                Repo.onLogin()
+                assertEquals("Keep this",Repo.messages.value.single().body)
+                assertEquals(mapOf(123L to "cat"),Repo.local.value.overrides)
+                assertEquals(listOf(Reading(123,10.0)),Repo.state.value.weights["cat"])
+                assertEquals("owner",storage.settings.getString("owner"))
+                storage.settings.putString("owner",null)
+            }
+        } finally { stop(); Repo.logout(); apiField.set(Repo,null); Dispatchers.resetMain() }
+    }
+
 }

@@ -1055,9 +1055,11 @@ class ScreenTest {
                 2 -> PetInsightsScreen(nav,"missing")
                 3 -> ScaleDetailsScreen(nav,"missing")
                 4 -> VisitDetailsScreen(nav,"missing")
+                5 -> VisitSummaryScreen(nav,"missing",nowMs())
+                6 -> VisitSummaryScreen(nav,pet.id,0)
             }
         } } }
-        repeat(5) { index ->
+        repeat(7) { index ->
             compose.runOnIdle { selected.intValue=index }
             compose.onNodeWithText("Selection removed").assertExists()
             compose.onNodeWithText("SmartScale® Details").assertDoesNotExist()
@@ -1181,6 +1183,62 @@ class ScreenTest {
             compose.waitUntil(5000) { compose.waitForIdle(); messages.contains("Failed: Sleep service offline") }
             assertFalse(messages.contains("Sleep schedule saved"))
         } finally { field.set(Repo,original) }
+    }
+
+    @Test fun insightsExportKnownDurationsAndKeepUnpairedVisitsExplicitlyUnknown() {
+        val p=pet; val r=robot
+        val at=yesterday.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()+12*3_600_000
+        val readings=listOf(Reading(at,10.0),Reading(at+3_600_000,11.0))
+        val acts=listOf(Act(at-51_000,"robotStatusCatDetect"),Act(at,"catWeight","10.0"),Act(at+12*60_000,"robotCycleStatusDump"))
+        Repo.state.value=AppState(robots=listOf(r),pets=listOf(p),weights=mapOf(p.id to readings),acts=mapOf("removed-robot" to acts))
+        assertEquals(6.0,Repo.state.value.durations(p.id).getValue(at),0.001)
+        show("${p.name}’s Insights") { PetInsightsScreen(it,p.id) }
+        compose.onNodeWithText("Export full history (CSV)").performScrollTo().performClick()
+        val rows=sharedCsv!!.trim().lines()
+        assertEquals(3,rows.size); assertTrue(rows[1].endsWith(",6.0")); assertTrue(rows[2].endsWith(","))
+        compose.runOnIdle { Repo.state.value=Repo.state.value.copy(weights=emptyMap(),acts=emptyMap()) }
+        compose.onNodeWithText("Export full history (CSV)").performScrollTo().performClick()
+        assertEquals("timestamp,weight_lbs,weight_kg,duration_min\n",sharedCsv)
+    }
+
+    @Test fun smartScaleHistoryLoadsTheRemainingPageAndKeepsItsEmptyStateExplicit() {
+        val p=pet
+        val readings=(0..10).map { Reading(nowMs()-it*3_600_000,10.0+it) }.sortedBy { it.ts }
+        Repo.state.value=AppState(pets=listOf(p),weights=mapOf(p.id to readings))
+        show("SmartScale® Details") { ScaleDetailsScreen(it,p.id) }
+        compose.onNodeWithText("See More (1 more)").performScrollTo().performClick()
+        compose.onAllNodesWithText("Weight recorded -",substring=true).assertCountEquals(11)
+        compose.onNodeWithText("See More",substring=true).assertDoesNotExist()
+        compose.runOnIdle { Repo.state.value=Repo.state.value.copy(weights=emptyMap()) }
+        compose.onNodeWithText("No history yet").performScrollTo().assertExists()
+    }
+
+    @Test fun recapCanPageThroughAnEmptyHistoryWithoutInventingVisitRows() {
+        Repo.state.value=AppState(pets=listOf(pet))
+        show("Daily Recap") { DailyRecapScreen(it) }
+        compose.onNodeWithContentDescription("Next week").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Previous week").performClick()
+        compose.onNodeWithContentDescription("Next week").assertIsEnabled().performClick()
+        compose.onNodeWithText("Visit Breakdown").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Next week").assertIsNotEnabled()
+    }
+
+    @Test fun welcomeCanSwitchBetweenCloudAndLocalSetupWithoutStartingAConnection() {
+        Repo.logout(); Repo.setMode(false); Repo.acceptIntro()
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides platform) { AppTheme { Root() } } }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("Robot on the ESPHome firmware? Connect locally").performClick()
+        compose.onNodeWithText("Connect Home Assistant").assertExists(); assertTrue(Repo.localMode)
+        compose.onNodeWithText("Use the Whisker cloud instead").performClick()
+        compose.onNodeWithText("Login",substring=false).assertExists(); assertFalse(Repo.localMode)
+        assertFalse(Repo.signedIn); assertTrue(Repo.state.value.robots.isEmpty())
+    }
+
+    @Test fun previewBuildReleaseNotesOpenTheReleaseList() {
+        val preview=object : PlatformUi by platform { override val appVersion="1.2.3-beta1" }
+        compose.setContent { CompositionLocalProvider(LocalPlatform provides preview) { AppTheme { AccountScreen(rememberNavController()) } } }
+        compose.onNodeWithText("Release Notes").performScrollTo().performClick()
+        assertEquals("https://github.com/gccammelli/meowstache/releases",urls.last())
     }
 
 }

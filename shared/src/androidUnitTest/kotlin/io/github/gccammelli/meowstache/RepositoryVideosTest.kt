@@ -152,4 +152,20 @@ class RepositoryVideosTest {
             assertEquals(verified,storage.settings.getString("haUrl")); assertEquals("pastedtoken",tokens["haToken"])
         } finally { Repo.logout(); Dispatchers.resetMain() }
     }
+    @Test fun aWorkingHomeVideoAddressAvoidsTheAwayServerAndBlankAwayAddressRemovesIt() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler)); init()
+        try {
+            HaSocket(sessions=3,commandsPerSession=1,result=::media).use { home ->
+                assertEquals(1,withContext(Dispatchers.IO) { Repo.setVideos("visits",home.url,"token","https://away.example") })
+                assertEquals("https://away.example",Repo.clipsAwayUrl)
+                assertEquals(home.url+"/signed/clip.mp4",withContext(Dispatchers.IO) { Repo.clipUrl(clip) })
+                assertEquals(1,withContext(Dispatchers.IO) { Repo.setVideos("visits",home.url,"token"," ") })
+                assertNull(Repo.clipsAwayUrl)
+            }
+            tokens.remove("camToken")
+            assertEquals("Visit videos aren't connected",assertFailsWith<ApiException> { Repo.clipUrl(clip) }.message)
+            assertEquals(listOf(clip),Repo.clips.value)
+        } finally { Repo.logout(); Dispatchers.resetMain() }
+    }
+
 }
