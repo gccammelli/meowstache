@@ -414,7 +414,7 @@ private fun Toggle(label: String, checked: Boolean, enabled: Boolean = true, inf
 }
 
 @Composable
-private fun Choice(options: List<Int>, selected: Int, suffix: (Int) -> String, onSelect: (Int) -> Unit) =
+private fun <T> Choice(options: List<T>, selected: T, suffix: (T) -> String, onSelect: (T) -> Unit) =
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { o ->
             Text(suffix(o), color = if (o == selected) Color(0xFF2B2B2B) else W.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -487,7 +487,7 @@ fun NotificationsScreen(nav: NavHostController) {
                 Toggle("No litter box visit", a.noVisitEnabled) { update(a.copy(noVisitEnabled = it)) }
                 if (a.noVisitEnabled) {
                     Text("Alert when a pet hasn't visited for", color = W.Text2, fontSize = 12.sp)
-                    Choice(listOf(1, 2, 3), a.noVisitDays, { "$it day${if (it > 1) "s" else ""}" }) { update(a.copy(noVisitDays = it)) }
+                    Choice(listOf(1.0, 1.5, 2.0, 3.0), a.noVisitDays, { "${it.toString().removeSuffix(".0")} day${if (it > 1) "s" else ""}" }) { update(a.copy(noVisitDays = it)) }
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = W.Line)
 

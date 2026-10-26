@@ -715,7 +715,9 @@ class ScreenTest {
         }
         toggle("No litter box visit")
         compose.onNodeWithText("3 days").performScrollTo().performClick()
-        assertEquals(3, Repo.alerts.value.noVisitDays)
+        assertEquals(3.0, Repo.alerts.value.noVisitDays, 0.0)
+        compose.onNodeWithText("1.5 days").performScrollTo().performClick()
+        assertEquals(1.5, Repo.alerts.value.noVisitDays, 0.0)
         toggle("Too many visits")
         assertTrue("Too many visits not enabled: ${Repo.alerts.value}", Repo.alerts.value.tooManyEnabled)
         compose.onNodeWithText("12").performScrollTo().performClick()

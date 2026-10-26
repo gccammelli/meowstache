@@ -47,13 +47,28 @@ class HistoryTest {
 
     @Test fun noVisitAndTooMany() {
         val now = t("2026-10-13T12:00:00")
-        val s = AlertSettings(noVisitEnabled = true, noVisitDays = 2, tooManyEnabled = true, tooManyVisits = 2)
+        val s = AlertSettings(noVisitEnabled = true, noVisitDays = 2.0, tooManyEnabled = true, tooManyVisits = 2)
         val old = mapOf("a" to listOf(Reading(t("2026-10-11T11:00:00"), 10.0)))
         assertTrue(evaluateAlerts(now, listOf("a" to "Luna"), old, s, fmt, z).any { it.key.startsWith("novisit") })
         val busy = mapOf("a" to (1..3).map { Reading(now - it * 3_600_000L, 10.0) })
         val alerts = evaluateAlerts(now, listOf("a" to "Luna"), busy, s, fmt, z)
         assertTrue(alerts.any { it.key.startsWith("toomany") })
         assertTrue(alerts.none { it.key.startsWith("novisit") })
+    }
+
+    @Test fun noVisitThresholdsAndSavedSettings() {
+        val last = t("2026-10-10T12:00:00")
+        val weights = mapOf("a" to listOf(Reading(last, 10.0)))
+        for ((days, label) in listOf(1.0 to "1 day", 1.5 to "1.5 days", 2.0 to "2 days", 3.0 to "3 days")) {
+            val savedDays = days.toString().removeSuffix(".0")
+            val settings = json.decodeFromString<AlertSettings>("""{"noVisitEnabled":true,"noVisitDays":$savedDays}""")
+            assertEquals(days, settings.noVisitDays)
+            assertEquals(settings, json.decodeFromString<AlertSettings>(json.encodeToString(AlertSettings.serializer(), settings)))
+            val due = last + (days * 86_400_000L).toLong()
+            assertTrue(evaluateAlerts(due - 1, listOf("a" to "Luna"), weights, settings, fmt, z).isEmpty())
+            val alert = evaluateAlerts(due, listOf("a" to "Luna"), weights, settings, fmt, z).single()
+            assertEquals("No visits from Luna in the last $label.", alert.body)
+        }
     }
 
     @Test fun targetCrossingBothWays() {

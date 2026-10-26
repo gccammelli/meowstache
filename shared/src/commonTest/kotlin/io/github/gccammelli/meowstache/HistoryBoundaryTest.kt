@@ -76,7 +76,7 @@ class HistoryBoundaryTest {
     }
 
     @Test fun alertThresholdsExcludeFutureReadingsAndUnchangedTargetWeights() {
-        val settings=AlertSettings(noVisitEnabled=true,noVisitDays=1,tooManyEnabled=true,tooManyVisits=1,targets=mapOf("pet" to Target(11.0,0)))
+        val settings=AlertSettings(noVisitEnabled=true,noVisitDays=1.0,tooManyEnabled=true,tooManyVisits=1,targets=mapOf("pet" to Target(11.0,0)))
         val unchanged=listOf(Reading(now-2*oneDay,10.0),Reading(now-oneDay,10.0))
         val alerts=evaluateAlerts(now,listOf("pet" to "Mochi","absent" to "Luna"),mapOf("pet" to unchanged),settings,fmt,zone)
         assertEquals(1,alerts.size); assertTrue(alerts.single().body.endsWith("1 day."))

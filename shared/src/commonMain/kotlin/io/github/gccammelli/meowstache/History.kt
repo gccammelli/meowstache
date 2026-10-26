@@ -169,7 +169,7 @@ data class Target(val lbs: Double, val setAt: Long)
 @Serializable
 data class AlertSettings(
     val noVisitEnabled: Boolean = false,
-    val noVisitDays: Int = 1,
+    val noVisitDays: Double = 1.0,
     val tooManyEnabled: Boolean = false,
     val tooManyVisits: Int = 8,
     val targets: Map<String, Target> = emptyMap(),
@@ -310,9 +310,9 @@ fun evaluateAlerts(
         val r = weights[id].orEmpty().sortedBy { it.ts }
         val last = r.lastOrNull()?.ts
         if (s.noVisitEnabled && last != null && now - last >= s.noVisitDays * 86_400_000L) {
-            val d = s.noVisitDays
+            val d = s.noVisitDays.toString().removeSuffix(".0")
             out += PetAlert("novisit:$id:$last", id, "$name hasn't used the Litter-Robot",
-                "No visits from $name in the last $d day${if (d > 1) "s" else ""}.")
+                "No visits from $name in the last $d day${if (s.noVisitDays > 1) "s" else ""}.")
         }
         if (s.tooManyEnabled) {
             val n = r.count { now - it.ts in 0 until 86_400_000L }
