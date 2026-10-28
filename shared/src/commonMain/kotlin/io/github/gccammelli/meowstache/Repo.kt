@@ -525,7 +525,7 @@ object Repo {
     }
 
     private suspend fun mergeActivity(robots: List<Robot>) {
-        for (robot in robots) {
+        robots.forEach { robot ->
             val have = state.value.acts[robot.serial].orEmpty()
             val acts = runCatching { fetchActivity(robot, have.maxOfOrNull { it.ts }) }.getOrDefault(emptyList())
             state.update { st -> st.copy(acts = st.acts + (robot.serial to (have + acts).distinct().sortedByDescending { it.ts })) }
