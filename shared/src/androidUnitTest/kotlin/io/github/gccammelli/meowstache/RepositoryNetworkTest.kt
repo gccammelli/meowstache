@@ -93,7 +93,9 @@ class RepositoryNetworkTest {
                 assertTrue(st.acts.values.flatten().any { it.value == "catWeight" })
                 assertFalse(st.loading); assertFalse(st.historyLoading)
                 val robot = st.robots.first()
+                val activityCalls = calls.count { "getLitterRobot4Activity" in it }
                 assertTrue(Repo.command(robot, "startCycle").isSuccess)
+                assertTrue(calls.count { "getLitterRobot4Activity" in it } > activityCalls, "light refresh must fetch activity")
                 commandError = true; assertTrue(Repo.command(robot, "startCycle").isFailure)
                 assertTrue(Repo.rename(robot, "New nickname").isSuccess)
                 assertTrue(Repo.toggleHopper(robot, true).isSuccess)
