@@ -148,7 +148,7 @@ class Api(private val prefs: KeyValue, private val secrets: SecretStore, private
         val obj = json.parseToJsonElement(text).jsonObject
         val errors = obj["errors"] as? JsonArray
         val data = obj["data"] as? JsonObject
-        if (data == null && !errors.isNullOrEmpty()) {
+        if ((data == null || data.values.all { it is JsonNull }) && !errors.isNullOrEmpty()) {
             throw ApiException(errors.joinToString { it.jsonObject["message"]?.str().orEmpty() })
         }
         return data ?: JsonObject(emptyMap())

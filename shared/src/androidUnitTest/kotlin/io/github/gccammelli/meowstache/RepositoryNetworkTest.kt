@@ -48,7 +48,9 @@ class RepositoryNetworkTest {
                 if(userError) throw ApiException("Profile unavailable")
                 respond("""{"user":{"firstName":"Test","lastName":"Owner"}}""")
             } else {
-                val query = json.parseToJsonElement((request.body as TextContent).text).jsonObject.s("query").orEmpty()
+                val requestBody = json.parseToJsonElement((request.body as TextContent).text).jsonObject
+                val query = requestBody.s("query").orEmpty()
+                if ("getLitterRobot4Activity" in query) assertEquals(10_000, requestBody.o("variables")?.i("limit"))
                 calls += query
                 if(historyError && ("getWeightHistoryByPetId" in query || "getLitterRobot4Activity" in query)) throw ApiException("History temporarily unavailable")
                 val data = when {

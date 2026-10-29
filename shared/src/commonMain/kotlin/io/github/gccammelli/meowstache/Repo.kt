@@ -554,7 +554,7 @@ object Repo {
                     }
                 }""",
                 mapOf("serial" to robot.serial, "startTimestamp" to utcStamp(from),
-                    "endTimestamp" to utcStamp(to), "limit" to 20_000, "consumer" to "app")
+                    "endTimestamp" to utcStamp(to), "limit" to 10_000, "consumer" to "app")
             ).a("getLitterRobot4Activity").mapNotNull { a ->
                 Act(a.s("timestamp")?.let(::parseTs) ?: return@mapNotNull null, a.s("value") ?: return@mapNotNull null, a.s("actionValue"), a.s("valueString"), a.s("stateString"))
             }
