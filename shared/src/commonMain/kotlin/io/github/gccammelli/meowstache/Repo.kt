@@ -472,7 +472,7 @@ object Repo {
                     )
                 }
             }
-            if (full) loadHistory()
+            if (full) loadHistory() else loadActivity()
         } catch (e: Exception) {
             state.update { it.copy(loading = false, historyLoading = false, error = e.message ?: e.toString()) }
             if (e is AuthException && !api.isLoggedIn) throw e
@@ -512,14 +512,29 @@ object Repo {
                 }
             }.awaitAll()
             state.update { st -> st.copy(weights = st.weights + w.associate { (id, l) -> id to merge(st.weights[id], l) }) }
-            for (robot in s.robots) {
-                val have = state.value.acts[robot.serial].orEmpty()
-                val acts = runCatching { fetchActivity(robot, have.maxOfOrNull { it.ts }) }.getOrDefault(emptyList())
-                state.update { st -> st.copy(acts = st.acts + (robot.serial to (have + acts).distinct().sortedByDescending { it.ts })) }
-            }
+            mergeActivity(s.robots)
         }
         state.update { it.copy(historyLoading = false) }
         saveCache()
+    }
+
+    /** Incremental activity fetch for light refreshes, so Device Activity keeps up with the pets view. */
+    private suspend fun loadActivity() {
+        mergeActivity(state.value.robots)
+        saveCache()
+    }
+
+    private suspend fun mergeActivity(robots: List<Robot>) {
+        robots.forEach { robot ->
+            val have = state.value.acts[robot.serial].orEmpty()
+            val newest = have.map { it.ts }.maxOrNull()
+            val acts = try {
+                fetchActivity(robot, newest)
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            state.update { st -> st.copy(acts = st.acts + (robot.serial to (have + acts).distinct().sortedByDescending { it.ts })) }
+        }
     }
 
     /**
