@@ -1,0 +1,27 @@
+name: Auto-merge first-party pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    if: >-
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.user.login == 'gccammelli' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft &&
+      !startsWith(github.event.pull_request.head.ref, 'cammelli-bot/issue-') &&
+      !startsWith(github.event.pull_request.head.ref, 'codex/upstream-lr4-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge after required checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr merge "$PR_NUMBER" --auto --squash
