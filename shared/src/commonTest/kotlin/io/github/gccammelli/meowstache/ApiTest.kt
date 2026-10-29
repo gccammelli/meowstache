@@ -198,4 +198,11 @@ class ApiTest {
         assertEquals(listOf("A","B","2","true"),shapes.strings("values"))
     }
 
+    @Test fun graphqlNullResultWithErrorsIsNotAnEmptySuccess() = runTest {
+        HttpClient(MockEngine { respond("""{"data":{"getLitterRobot4Activity":null},"errors":[{"message":"Invalid limit"}]}""") }).use { http ->
+            val api = Api(Settings(), Secrets().apply { set("id", token()) }, http)
+            assertEquals("Invalid limit", assertFailsWith<ApiException> { api.gql("https://example.test/graphql", "query") }.message)
+        }
+    }
+
 }
