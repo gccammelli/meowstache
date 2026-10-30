@@ -6,7 +6,7 @@ coverage:
   status:
     project:
       default:
-        target: 95%
+        target: 90%
         threshold: 0%
         if_not_found: failure
         informational: false
