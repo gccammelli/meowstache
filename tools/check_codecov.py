@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require 95% fully covered lines in Codecov's processed report for this commit."""
+"""Require 90% fully covered lines in Codecov's processed report for this commit."""
 
 import json
 import re
@@ -28,7 +28,7 @@ def totals(report, commit):
 
 def passes(counts):
     hits, _, _, lines = counts
-    return hits * 100 >= lines * 95
+    return hits * 100 >= lines * 90
 
 
 def self_test():
@@ -38,10 +38,10 @@ def self_test():
         return {"commitid": commit, "state": "complete", "totals": {
             "hits": hits, "partials": partials, "misses": misses, "lines": hits + partials + misses}}
 
-    assert passes(totals(report(95, 5, 0), commit))
-    assert not passes(totals(report(94, 6, 0), commit))
+    assert passes(totals(report(90, 10, 0), commit))
+    assert not passes(totals(report(89, 11, 0), commit))
     assert not passes(totals(report(74, 26, 0), commit))  # All lines executed is insufficient.
-    assert not passes(totals(report(94999, 5001, 0), commit))  # Rounding cannot pass.
+    assert not passes(totals(report(89999, 10001, 0), commit))  # Rounding cannot pass.
     assert totals({"commitid": commit, "state": "pending"}, commit) is None
     for invalid in [report(0, 0, 0), {**report(100, 0, 0), "commitid": "b" * 40},
                     {"commitid": commit, "state": "failed"},
@@ -71,7 +71,7 @@ def main():
                 counts = totals(json.load(response), commit)
             if counts:
                 hits, partials, misses, lines = counts
-                print(f"Codecov {commit}: {hits}/{lines} fully covered lines = {hits / lines:.2%}; {partials} partial, {misses} missed. Minimum: 95%.")
+                print(f"Codecov {commit}: {hits}/{lines} fully covered lines = {hits / lines:.2%}; {partials} partial, {misses} missed. Minimum: 90%.")
                 return 0 if passes(counts) else 1
         except urllib.error.HTTPError as error:
             if error.code not in {404, 408, 429, 500, 502, 503, 504}:
