@@ -53,6 +53,10 @@ def tag_commit(tag: str) -> str:
         raise ValueError(f"could not resolve exactly one upstream tag ref for {tag}")
     obj = refs[0].get("object", {})
     sha = obj.get("sha", "")
+    if obj.get("type") == "tag" and re.fullmatch(r"[0-9a-f]{40}", sha):
+        annotated = json.loads(fetch(f"{API}/git/tags/{sha}"))
+        obj = annotated.get("object", {})
+        sha = obj.get("sha", "")
     if obj.get("type") != "commit" or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError(f"upstream tag {tag} does not resolve directly to a commit")
     return sha
