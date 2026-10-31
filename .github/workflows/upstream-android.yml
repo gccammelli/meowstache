@@ -37,7 +37,7 @@ jobs:
   repair:
     needs: detect
     if: needs.detect.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     outputs:
       candidate: ${{ steps.repair.outputs.final-message }}
@@ -139,7 +139,7 @@ jobs:
   review:
     needs: [detect, repair, validate]
     if: needs.validate.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       verdict: ${{ steps.review.outputs.final-message }}
