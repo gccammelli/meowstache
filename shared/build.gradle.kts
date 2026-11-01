@@ -53,7 +53,7 @@ kotlin {
         }
         androidUnitTest.dependencies {
             implementation("androidx.arch.core:core-runtime:2.2.0")
-            implementation("org.robolectric:robolectric:4.16.1")
+            implementation("org.robolectric:robolectric:4.17")
             implementation("androidx.compose.ui:ui-test-junit4:1.9.3")
             implementation("androidx.compose.ui:ui-test-manifest:1.9.3")
         }
@@ -62,7 +62,7 @@ kotlin {
 
 android {
     namespace = "io.github.gccammelli.meowstache.shared"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig { minSdk = 26 }
     testOptions.unitTests.isIncludeAndroidResources = true
     compileOptions {
@@ -89,4 +89,9 @@ kover {
             verify { rule { minBound(90) } }
         }
     }
+}
+
+// Robolectric's Android 17 file descriptor interceptor uses this JDK interface.
+tasks.withType<Test>().configureEach {
+    jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
 }

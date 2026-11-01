@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "io.github.gccammelli.meowstache"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.gccammelli.meowstache" + if (providers.gradleProperty("meowstache.testbed").isPresent) ".testbed" else ""
