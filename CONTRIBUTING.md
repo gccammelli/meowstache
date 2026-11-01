@@ -21,6 +21,8 @@ For security vulnerabilities, do not open a public issue. Follow [SECURITY.md](S
 4. If the change is user-facing, attach before-and-after screenshots to the pull request. Use a short video when motion or a multi-step interaction cannot be shown clearly in still images. Say “No visual change” when that is genuinely the case.
 5. Describe the devices, Android/iOS versions, Home Assistant version and firmware used for any relevant manual or hardware test. Do not claim a real-device test unless it was actually performed.
 
+Use JDK 21 and Android SDK platform 37.1 for Android builds and tests. The iOS simulator target requires an Apple Silicon Mac; Intel iOS simulators are no longer supported by the Compose Multiplatform dependencies. Physical iOS devices remain supported.
+
 All checks must pass. Generated or AI-assisted contributions are welcome, but the author remains responsible for understanding, testing and clearly describing the result.
 
 External contributors, and automation acting on public or third-party requests, may prepare pull requests but may not merge them. Pull requests initiated by the maintainer or by first-party Cammelli maintenance automation may merge after the required checks pass without a separate approval step.
