@@ -53,7 +53,7 @@ kotlin {
         }
         androidUnitTest.dependencies {
             implementation("androidx.arch.core:core-runtime:2.2.0")
-            implementation("org.robolectric:robolectric:4.16.1")
+            implementation("org.robolectric:robolectric:4.17")
             implementation("androidx.compose.ui:ui-test-junit4:1.9.3")
             implementation("androidx.compose.ui:ui-test-manifest:1.9.3")
         }
