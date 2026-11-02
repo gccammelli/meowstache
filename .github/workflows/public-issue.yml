@@ -116,6 +116,7 @@ jobs:
           prompt-file: .github/codex/public-issue.md
           sandbox: workspace-write
           safety-strategy: drop-sudo
+          allow-bots: true
           codex-args: '["--output-schema", ".github/codex/public-issue.schema.json"]'
       # Codex stays last: only structured output crosses into a fresh runner.
 
