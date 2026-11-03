@@ -616,6 +616,31 @@ class ScreenTest {
         assertTrue(Repo.local.value.filterAt.containsKey(robot.serial))
     }
 
+    @Test fun fullDrawerReplacesWastePercentageInBothDeviceLayouts() {
+        robotValues("DFILevelPercent" to "74", "isDFIFull" to "false")
+        show("Home") { MainScreen(it) }
+        compose.onNodeWithText("74%").assertExists()
+        compose.onNodeWithText("Full").assertDoesNotExist()
+
+        compose.runOnIdle { robotValues("isDFIFull" to "true") }
+        compose.onNodeWithText("Full").assertExists()
+        compose.onNodeWithText("74%").assertDoesNotExist()
+        System.getenv("MEOWSTACHE_DRAWER_EVIDENCE")?.let { path -> compose.runOnIdle {
+            val view = compose.activity.window.decorView
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            java.io.File(path).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } }
+
+        compose.onAllNodesWithText("Devices").onFirst().onParent().onChildren().filter(hasClickAction()).onLast().performClick()
+        compose.onNodeWithText("Full").assertExists()
+        compose.onNodeWithText("74%").assertDoesNotExist()
+
+        compose.runOnIdle { robotValues("isDFIFull" to "false") }
+        compose.onNodeWithText("74%").assertExists()
+        compose.onNodeWithText("Full").assertDoesNotExist()
+    }
+
     @Test fun homeDeviceLayoutCanShowACompactGrid() {
         show("Home") { MainScreen(it) }
         compose.onAllNodesWithText("Devices").onFirst().onParent().onChildren().filter(hasClickAction()).onLast().performClick()
