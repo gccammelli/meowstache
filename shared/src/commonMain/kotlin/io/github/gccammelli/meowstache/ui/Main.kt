@@ -224,11 +224,7 @@ private fun HomeTab(nav: NavHostController) {
                     }
                     Text(r.name, color = W.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Waste:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
-                            LevelBar(r.wastePercent / 100f, wasteColor(r.wastePercent)); Spacer(Modifier.height(8.dp))
-                            Text("${r.wastePercent}%", color = W.Text, fontSize = 13.sp)
-                        }
+                        WasteIndicator(r, compact = true)
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Litter:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
                             LevelBar(litterFraction(r.litterState), litterColor(r.litterState), mid = true); Spacer(Modifier.height(8.dp))
@@ -298,6 +294,17 @@ fun StatusLine(status: Pair<String, Long>, size: Int = 13) = Row(verticalAlignme
 }
 
 @Composable
+private fun WasteIndicator(r: Robot, compact: Boolean = false) {
+    val level = if (r.isDrawerFull) 100 else r.wastePercent
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Waste:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
+        if (compact) LevelBar(level / 100f, wasteColor(level)) else WasteIcon(level)
+        Spacer(Modifier.height(8.dp))
+        Text(if (r.isDrawerFull) "Full" else "${r.wastePercent}%", color = W.Text, fontSize = 13.sp)
+    }
+}
+
+@Composable
 fun RobotCard(r: io.github.gccammelli.meowstache.Robot, onClick: (() -> Unit)?) {
     WCard(Modifier.fillMaxWidth(), onClick = onClick, pad = 20.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -308,11 +315,7 @@ fun RobotCard(r: io.github.gccammelli.meowstache.Robot, onClick: (() -> Unit)?) 
                 StatusLine(r.status)
                 Spacer(Modifier.height(28.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Waste:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
-                        WasteIcon(r.wastePercent); Spacer(Modifier.height(8.dp))
-                        Text("${r.wastePercent}%", color = W.Text, fontSize = 13.sp)
-                    }
+                    WasteIndicator(r)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Litter:", color = W.Text, fontSize = 13.sp); Spacer(Modifier.height(8.dp))
                         LitterIcon(r.litterState); Spacer(Modifier.height(8.dp))
