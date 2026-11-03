@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
         with:
@@ -141,7 +141,7 @@ jobs:
   # iOS: unsigned .ipa (users sign it with their own Apple ID via SideStore/AltStore) plus simulator
   # screenshots, all on GitHub's free macOS runners, so no Mac is needed to build.
   ios:
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -151,14 +151,14 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
         with:
           cache-disabled: true
 
       - name: Shared tests on the iOS simulator
-        run: ./gradlew :shared:iosX64Test
+        run: ./gradlew :shared:iosSimulatorArm64Test
 
       - name: Build unsigned .ipa
         run: |
@@ -171,7 +171,7 @@ jobs:
 
       - name: Simulator screenshots (intro, then demo mode)
         run: |
-          xcodebuild -project iosApp/iosApp.xcodeproj -target iosApp -configuration Debug -sdk iphonesimulator -arch x86_64 \
+          xcodebuild -project iosApp/iosApp.xcodeproj -target iosApp -configuration Debug -sdk iphonesimulator -arch arm64 \
             SYMROOT="$PWD/build/ios-sim" CODE_SIGNING_ALLOWED=NO build
           TYPE=$(xcrun simctl list devicetypes | grep -oE 'com.apple.CoreSimulator.SimDeviceType.iPhone-1[0-9](-Pro)?' | tail -1)
           RUNTIME=$(xcrun simctl list runtimes | grep -oE 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+' | tail -1)
