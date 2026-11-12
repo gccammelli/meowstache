@@ -141,7 +141,7 @@ jobs:
   # iOS: unsigned .ipa (users sign it with their own Apple ID via SideStore/AltStore) plus simulator
   # screenshots, all on GitHub's free macOS runners, so no Mac is needed to build.
   ios:
-    runs-on: macos-15
+    runs-on: macos-14
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
