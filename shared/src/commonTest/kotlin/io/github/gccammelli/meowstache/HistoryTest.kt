@@ -35,6 +35,22 @@ class HistoryTest {
         assertEquals(2, countSeries(r.map { it.ts }, b, z).last())
     }
 
+    @Test fun timedWeightsPlacesEachReadingByTime() {
+        val r = listOf(
+            Reading(t("2026-10-05T23:59:00"), 9.0), // before the week
+            Reading(t("2026-10-12T18:00:00"), 11.0),
+            Reading(t("2026-10-06T06:00:00"), 10.0),
+            Reading(t("2026-10-13T00:00:00"), 12.0), // today, after the week
+        )
+        val tw = timedWeights(r, buckets(Range.WEEK, LocalDate.of(2026, 10, 13), null), z)
+        assertEquals(listOf(10.0, 11.0), tw.lbs)
+        assertEquals(0.25 / 7, tw.xs[0], 1e-9)
+        assertEquals(6.75 / 7, tw.xs[1], 1e-9)
+        assertEquals(7, tw.labelXs.size)
+        assertEquals(0.5 / 7, tw.labelXs.first(), 1e-9)
+        assertTrue(timedWeights(emptyList(), emptyList(), z).xs.isEmpty())
+    }
+
     @Test fun durationFromDetectToLeaving() {
         val w = listOf(Reading(t("2026-10-12T23:05:00"), 10.8))
         val acts = listOf(

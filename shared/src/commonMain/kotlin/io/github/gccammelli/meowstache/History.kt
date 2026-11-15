@@ -3,6 +3,7 @@ package io.github.gccammelli.meowstache
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
 import io.github.gccammelli.meowstache.YearMonth
 import io.github.gccammelli.meowstache.ZoneId
 import io.github.gccammelli.meowstache.DateTimeFormatter
@@ -51,6 +52,18 @@ fun weightSeries(readings: List<Reading>, b: List<Bucket>, zone: ZoneId = ZoneId
         val v = byDay.filterKeys { it in bk.start..bk.end }.values.flatten()
         if (v.isEmpty()) null else v.sumOf { it.lbs } / v.size
     }
+}
+
+/** Every reading in the buckets' span, placed by time: [xs] and [labelXs] are 0..1 fractions across the whole span. */
+class TimedWeights(val lbs: List<Double>, val xs: List<Double>, val labelXs: List<Double>)
+
+fun timedWeights(readings: List<Reading>, b: List<Bucket>, zone: ZoneId = ZoneId.systemDefault()): TimedWeights {
+    if (b.isEmpty()) return TimedWeights(emptyList(), emptyList(), emptyList())
+    fun ms(d: LocalDate) = d.atStartOfDayIn(zone).toEpochMilliseconds()
+    val from = ms(b.first().start); val to = ms(b.last().end.plusDays(1)); val span = (to - from).toDouble()
+    val inside = readings.filter { it.ts in from until to }.sortedBy { it.ts }
+    return TimedWeights(inside.map { it.lbs }, inside.map { (it.ts - from) / span },
+        b.map { (((ms(it.start) + ms(it.end.plusDays(1))) / 2) - from) / span })
 }
 
 fun countSeries(timestamps: List<Long>, b: List<Bucket>, zone: ZoneId = ZoneId.systemDefault()): List<Int> {

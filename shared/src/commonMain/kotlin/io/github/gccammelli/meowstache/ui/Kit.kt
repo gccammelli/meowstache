@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.Typography
@@ -471,8 +472,13 @@ private fun niceStep(range: Double, ticks: Int): Double {
         .firstOrNull { it >= raw } ?: raw
 }
 
-private fun axis(values: List<Double>, fromZero: Boolean): Triple<Double, Double, Double> {
+private fun axis(values: List<Double>, fromZero: Boolean, tight: Boolean): Triple<Double, Double, Double> {
     if (values.isEmpty()) return Triple(0.0, 5.0, 1.0)
+    if (tight) { // zoomed: min/max of the data +/- 10%, gridlines on round numbers inside that
+        var lo = values.min() * 0.9; var hi = values.max() * 1.1
+        if (hi - lo < 1e-9) { lo = max(0.0, lo - 0.5); hi += 0.5 } // all readings equal (or 0)
+        return Triple(lo, hi, niceStep(hi - lo, 5))
+    }
     var lo = if (fromZero) 0.0 else values.min(); var hi = values.max()
     if (hi - lo < 1e-9) { hi += if (fromZero) 1.0 else 0.5; if (!fromZero) lo -= 0.5 }
     val pad = if (fromZero) 0.0 else (hi - lo) * 0.6 + 0.6
@@ -501,19 +507,26 @@ fun Chart(
     tooltip: (Double) -> String = { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(it) },
     color: Color = when (kind) { ChartKind.AREA -> W.Green; ChartKind.DOTS -> W.Accent; else -> W.Teal },
     marks: List<Int> = emptyList(), // per point: 1 = pattern up, -1 = pattern down, 0 = none
+    tight: Boolean = false, // y axis spans the data +/- 10% instead of starting at 0
+    xs: List<Double>? = null, // per value: 0..1 position across the plot, for points placed by time
+    labelXs: List<Double>? = null, // per label: same, when [xs] is set
 ) {
     val tm = rememberTextMeasurer()
     var sel by remember(values) { mutableIntStateOf(values.indexOfLast { it != null }) }
     val nonNull = values.filterNotNull()
-    val (lo, hi, step) = remember(values) { axis(nonNull + listOfNotNull(average), fromZero) }
+    val (lo, hi, step) = remember(values) { axis(nonNull + listOfNotNull(average), fromZero, tight) }
     val fig = Figtree
     val labelStyle = TextStyle(color = W.Text, fontSize = 12.sp, fontFamily = fig)
     Canvas(
-        modifier.fillMaxWidth().height(180.dp).pointerInput(values) {
+        modifier.fillMaxWidth().height(180.dp).testTag("chart").pointerInput(values) {
             detectTapGestures { o ->
                 val left = 44.dp.toPx(); val right = size.width - 12.dp.toPx()
                 val n = values.size
                 if (n == 0) return@detectTapGestures
+                if (xs != null) {
+                    sel = xs.indices.minBy { kotlin.math.abs(left + (right - left) * xs[it].toFloat() - o.x) }
+                    return@detectTapGestures
+                }
                 val idx = ((o.x - left) / ((right - left) / max(1, if (kind == ChartKind.BARS) n else n - 1)))
                     .let { if (kind == ChartKind.BARS) it.toInt() else kotlin.math.floor(it + 0.5f).toInt() }.coerceIn(0, n - 1)
                 if (values[idx] != null) sel = idx
@@ -525,24 +538,25 @@ fun Chart(
         val n = values.size
         fun y(v: Double) = (bottom - (v - lo) / (hi - lo) * (bottom - top)).toFloat()
         val slot = (right - left) / max(1, if (kind == ChartKind.BARS) n else n - 1)
-        fun x(i: Int) = if (kind == ChartKind.BARS) left + slot * (i + 0.5f) else if (n == 1) (left + right) / 2 else left + slot * i
+        fun x(i: Int) = if (xs != null) left + (right - left) * xs[i].toFloat() else if (kind == ChartKind.BARS) left + slot * (i + 0.5f) else if (n == 1) (left + right) / 2 else left + slot * i
 
         // grid + y labels
-        var t = lo
+        var t = if (tight) ceil(lo / step - 1e-9) * step else lo
         while (t <= hi + 1e-9) {
             val yy = y(t)
             drawLine(if (kind == ChartKind.AREA) W.Line else W.Icon, Offset(left, yy), Offset(right, yy), 2f)
-            val txt = if (step < 1) "%.1f".format(t).removeSuffix(".0") else t.toInt().toString()
+            val txt = if (step % 1.0 == 0.0) t.toInt().toString() else (if ((step * 10) % 1.0 < 1e-6) "%.1f" else "%.2f").format(t).removeSuffix(".0")
             val m = tm.measure(txt, labelStyle)
             drawText(m, topLeft = Offset(left - m.size.width - 10.dp.toPx(), yy - m.size.height / 2))
             t += step
         }
         // x labels: as many as fit without overlapping, always including the newest
         val widest = labels.maxOfOrNull { tm.measure(it, labelStyle).size.width } ?: 0
-        val every = max(1, ceil(n * (widest + 12.dp.toPx()) / (right - left + slot)).toInt())
-        for (i in 0 until n) if ((n - 1 - i) % every == 0) {
+        val every = max(1, ceil(labels.size * (widest + 12.dp.toPx()) / (if (labelXs != null) right - left else right - left + slot)).toInt())
+        for (i in labels.indices) if ((labels.size - 1 - i) % every == 0) {
             val m = tm.measure(labels[i], labelStyle)
-            drawText(m, topLeft = Offset((x(i) - m.size.width / 2).coerceIn(0f, size.width - m.size.width), bottom + 14.dp.toPx()))
+            val lx = if (labelXs != null) left + (right - left) * labelXs[i].toFloat() else x(i)
+            drawText(m, topLeft = Offset((lx - m.size.width / 2).coerceIn(0f, size.width - m.size.width), bottom + 14.dp.toPx()))
         }
         val pts = values.mapIndexedNotNull { i, v -> v?.let { Offset(x(i), y(it)) } }
         when (kind) {
@@ -556,7 +570,8 @@ fun Chart(
             ChartKind.DOTS -> {
                 if (pts.size > 1) drawPath(Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) } },
                     W.Muted, style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f))))
-                pts.forEach { drawCircle(color, 9.dp.toPx(), it) }
+                val dot = if (xs == null) 6.dp else if (pts.size > 40) 2.dp else 3.5.dp
+                pts.forEach { drawCircle(color, dot.toPx(), it) }
             }
             else -> if (pts.isNotEmpty()) {
                 val p = smoothPath(pts)

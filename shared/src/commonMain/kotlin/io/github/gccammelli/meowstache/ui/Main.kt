@@ -33,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.ScatterPlot
 import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
@@ -730,18 +731,26 @@ fun ScaleDetailsScreen(nav: NavHostController, id: String) {
     val r = s.readings(id)
     var shown by remember { mutableIntStateOf(10) }
     var info by remember { mutableStateOf(false) }
+    var individual by rememberSaveable { mutableStateOf(false) }
     Screen({ BackTopBar("SmartScale® Details", { nav.popBackStack() }) {
         Icon(Icons.Outlined.Info, "Info", tint = W.Text, modifier = Modifier.size(30.dp).clickable { info = true })
     } }) {
         Scroll {
-            MetricHeader("Yesterday’s weight", splitWeight(yesterdayLbs(r)).let { "${it.first} ${it.second}" })
+            MetricHeader("Yesterday’s weight", splitWeight(yesterdayLbs(r)).let { "${it.first} ${it.second}" }) {
+                WeightModeToggle(individual) { individual = it }
+            }
             Spacer(Modifier.height(14.dp))
             RangeChartCard(s.earliest(id), header = {
                 Text("Weight Overview", color = W.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             }) { b, _ ->
-                Chart(weightSeries(r, b).map { it?.let(Repo::weightNum) }, b.map { it.label }, ChartKind.DOTS, fromZero = true,
-                    tooltip = { "${Repo.num(it)} ${Repo.unitLabel()}" })
-                Legend("Weights" to W.Accent)
+                val tip: (Double) -> String = { "${Repo.num(it)} ${Repo.unitLabel()}" }
+                if (individual) {
+                    val t = timedWeights(r, b)
+                    Chart(t.lbs.map(Repo::weightNum), b.map { it.label }, ChartKind.DOTS, tight = true, xs = t.xs, labelXs = t.labelXs, tooltip = tip)
+                } else {
+                    Chart(weightSeries(r, b).map { it?.let(Repo::weightNum) }, b.map { it.label }, ChartKind.DOTS, tight = true, tooltip = tip)
+                }
+                Legend(if (individual) "Every weighing" to W.Accent else "Daily average" to W.Accent)
             }
             Spacer(Modifier.height(14.dp))
             val durations = s.durations(id)
@@ -785,13 +794,24 @@ fun VisitDetailsScreen(nav: NavHostController, id: String) {
 }
 
 @Composable
-private fun MetricHeader(label: String, value: String) = WCard(Modifier.fillMaxWidth(), pad = 20.dp) {
+private fun MetricHeader(label: String, value: String, toggle: (@Composable () -> Unit)? = null) = WCard(Modifier.fillMaxWidth(), pad = 20.dp) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, color = W.Text2, fontSize = 13.sp)
             Text(value, color = W.Accent, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
         }
-        Icon(Icons.Filled.BarChart, null, tint = W.Off, modifier = Modifier.size(56.dp))
+        if (toggle != null) toggle() else Icon(Icons.Filled.BarChart, null, tint = W.Off, modifier = Modifier.size(56.dp))
+    }
+}
+
+/** Daily averages (bars) vs every single weighing placed at its time (dots). */
+@Composable
+private fun WeightModeToggle(individual: Boolean, onChange: (Boolean) -> Unit) {
+    val (icon, desc) = if (individual) Icons.Filled.ScatterPlot to "Showing every weighing. Tap for daily averages."
+        else Icons.Filled.BarChart to "Showing daily averages. Tap for every weighing."
+    Box(Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)).background(if (individual) W.Accent.copy(alpha = 0.2f) else Color.Transparent)
+        .clickable { onChange(!individual) }, contentAlignment = Alignment.Center) {
+        Icon(icon, desc, tint = if (individual) W.Accent else W.Off, modifier = Modifier.size(40.dp))
     }
 }
 
