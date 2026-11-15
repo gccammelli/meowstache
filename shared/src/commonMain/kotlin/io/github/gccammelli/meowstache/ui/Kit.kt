@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.Typography
@@ -471,7 +472,7 @@ private fun niceStep(range: Double, ticks: Int): Double {
         .firstOrNull { it >= raw } ?: raw
 }
 
-private fun axis(values: List<Double>, fromZero: Boolean, tight: Boolean = false): Triple<Double, Double, Double> {
+private fun axis(values: List<Double>, fromZero: Boolean, tight: Boolean): Triple<Double, Double, Double> {
     if (values.isEmpty()) return Triple(0.0, 5.0, 1.0)
     if (tight) { // zoomed: min/max of the data +/- 10%, gridlines on round numbers inside that
         var lo = values.min() * 0.9; var hi = values.max() * 1.1
@@ -517,14 +518,13 @@ fun Chart(
     val fig = Figtree
     val labelStyle = TextStyle(color = W.Text, fontSize = 12.sp, fontFamily = fig)
     Canvas(
-        modifier.fillMaxWidth().height(180.dp).pointerInput(values) {
+        modifier.fillMaxWidth().height(180.dp).testTag("chart").pointerInput(values) {
             detectTapGestures { o ->
                 val left = 44.dp.toPx(); val right = size.width - 12.dp.toPx()
                 val n = values.size
                 if (n == 0) return@detectTapGestures
                 if (xs != null) {
-                    val best = xs.indices.minByOrNull { kotlin.math.abs(left + (right - left) * xs[it].toFloat() - o.x) }
-                    if (best != null) sel = best
+                    sel = xs.indices.minBy { kotlin.math.abs(left + (right - left) * xs[it].toFloat() - o.x) }
                     return@detectTapGestures
                 }
                 val idx = ((o.x - left) / ((right - left) / max(1, if (kind == ChartKind.BARS) n else n - 1)))

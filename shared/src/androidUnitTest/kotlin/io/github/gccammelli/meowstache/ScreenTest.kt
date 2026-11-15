@@ -11,6 +11,11 @@ import android.graphics.Canvas
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import io.github.gccammelli.meowstache.ui.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
@@ -248,6 +253,42 @@ class ScreenTest {
     @Test fun insightsShowPet() = show("${pet.name}’s Insights") { PetInsightsScreen(it, pet.id) }
     @Test fun profileShowsPet() = show(pet.name) { PetProfileScreen(it, pet.id) }
     @Test fun weightShowsHistory() = show("SmartScale® Details") { ScaleDetailsScreen(it, pet.id) }
+
+    @Test fun weightChartTogglesBetweenDailyAndEveryWeighing() {
+        show("SmartScale® Details") { ScaleDetailsScreen(it, pet.id) }
+        fun tapChart() = compose.onAllNodesWithTag("chart").onFirst().performTouchInput { click(center) }
+        compose.onNodeWithText("Daily average").assertExists()
+        tapChart()
+        compose.onNodeWithContentDescription("Tap for every weighing", substring = true).performClick()
+        compose.onNodeWithText("Every weighing").assertExists()
+        for (tab in listOf("Week", "Month", "Year", "All")) {
+            compose.onNodeWithText(tab).performClick()
+            tapChart()
+        }
+        compose.onNodeWithContentDescription("Tap for daily averages", substring = true).performClick()
+        compose.onNodeWithText("Daily average").assertExists()
+    }
+
+    @Test fun zoomedChartCopesWithFlatSparseAndLargeValues() {
+        var case by mutableStateOf(0)
+        val cases = listOf<@Composable () -> Unit>(
+            { Chart(listOf(0.0, 0.0), listOf("a", "b"), ChartKind.DOTS, tight = true) }, // flat at zero
+            { Chart(listOf(55.0), List(27) { "Oct 26" }, ChartKind.DOTS, tight = true, xs = listOf(0.5), labelXs = List(27) { it / 27.0 }) },
+            { Chart(emptyList(), listOf("Sun"), ChartKind.DOTS, tight = true, xs = emptyList(), labelXs = listOf(0.5)) },
+            { Chart(List(50) { 5.0 + it % 3 * 0.05 }, listOf("Jan", "Feb"), ChartKind.DOTS, tight = true, xs = List(50) { it / 50.0 }, labelXs = listOf(0.25, 0.75)) },
+        )
+        show("Every weighing") { Column { Text("Every weighing"); cases[case]() } }
+        for (i in cases.indices) {
+            case = i
+            compose.waitForIdle()
+            compose.onNodeWithTag("chart").performTouchInput { click(center) }
+            compose.runOnIdle {
+                android.view.inspector.WindowInspector.getGlobalWindowViews().forEach { view ->
+                    if (view.width > 0 && view.height > 0) view.draw(Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)))
+                }
+            }
+        }
+    }
     @Test fun visitsShowHistory() = show("Visit Details") { VisitDetailsScreen(it, pet.id) }
     @Test fun recapShowsDay() = show("Daily Recap") { DailyRecapScreen(it) }
 

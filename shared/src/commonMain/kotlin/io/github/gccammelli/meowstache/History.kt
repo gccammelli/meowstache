@@ -55,14 +55,14 @@ fun weightSeries(readings: List<Reading>, b: List<Bucket>, zone: ZoneId = ZoneId
 }
 
 /** Every reading in the buckets' span, placed by time: [xs] and [labelXs] are 0..1 fractions across the whole span. */
-class TimedWeights(val lbs: List<Double>, val ts: List<Long>, val xs: List<Double>, val labelXs: List<Double>)
+class TimedWeights(val lbs: List<Double>, val xs: List<Double>, val labelXs: List<Double>)
 
 fun timedWeights(readings: List<Reading>, b: List<Bucket>, zone: ZoneId = ZoneId.systemDefault()): TimedWeights {
-    if (b.isEmpty()) return TimedWeights(emptyList(), emptyList(), emptyList(), emptyList())
+    if (b.isEmpty()) return TimedWeights(emptyList(), emptyList(), emptyList())
     fun ms(d: LocalDate) = d.atStartOfDayIn(zone).toEpochMilliseconds()
     val from = ms(b.first().start); val to = ms(b.last().end.plusDays(1)); val span = (to - from).toDouble()
     val inside = readings.filter { it.ts in from until to }.sortedBy { it.ts }
-    return TimedWeights(inside.map { it.lbs }, inside.map { it.ts }, inside.map { (it.ts - from) / span },
+    return TimedWeights(inside.map { it.lbs }, inside.map { (it.ts - from) / span },
         b.map { (((ms(it.start) + ms(it.end.plusDays(1))) / 2) - from) / span })
 }
 
