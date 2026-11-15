@@ -2,7 +2,9 @@ name: Public issue queue
 
 on:
   issues:
-    types: [opened, reopened, labeled]
+    types: [opened, reopened, labeled, closed]
+  issue_comment:
+    types: [created]
   schedule:
     - cron: "17 6,18 * * *"
   workflow_dispatch:
@@ -12,7 +14,10 @@ permissions:
 
 jobs:
   queue:
-    if: github.event_name == 'issues'
+    if: github.event_name == 'issues' && github.event.action != 'closed'
+    concurrency:
+      group: public-issue-queue-${{ github.event.issue.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,18 +26,18 @@ jobs:
       - name: Queue a bounded public request
         env:
           GH_TOKEN: ${{ github.token }}
-          ENABLED: ${{ secrets.PUBLIC_ISSUE_AGENT_ENABLED }}
+          ENABLED: ${{ vars.PUBLIC_ISSUE_AGENT_ENABLED }}
           BODY: ${{ github.event.issue.body }}
           ISSUE: ${{ github.event.issue.number }}
-          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
           REPOSITORY: ${{ github.repository }}
         run: |
           [[ "$ENABLED" == "true" ]] || exit 0
+          # Read live: a delayed run must not re-queue an issue that was closed meanwhile.
+          LABELS=$(gh issue view "$ISSUE" --repo "$REPOSITORY" --json labels,state --jq 'if .state == "OPEN" then [.labels[].name] else [] end')
           jq -e 'index("bug") or index("enhancement")' <<< "$LABELS" >/dev/null || exit 0
           jq -e 'index("agent-backlog") or index("agent-attempted") or index("agent-working") or index("agent-pr")' <<< "$LABELS" >/dev/null && exit 0
           [[ ${#BODY} -ge 40 && ${#BODY} -le 60000 ]] || exit 0
           gh issue edit "$ISSUE" --repo "$REPOSITORY" --add-label agent-backlog
-          gh issue comment "$ISSUE" --repo "$REPOSITORY" --body "Cammelli bot queued this request for restricted assessment. At most two public requests start per UTC day; safe changes become draft pull requests and are never auto-merged."
 
   drain:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -48,15 +53,58 @@ jobs:
       - name: Start one queued request
         env:
           GH_TOKEN: ${{ github.token }}
-          ENABLED: ${{ secrets.PUBLIC_ISSUE_AGENT_ENABLED }}
+          ENABLED: ${{ vars.PUBLIC_ISSUE_AGENT_ENABLED }}
           REPOSITORY: ${{ github.repository }}
         run: |
           [[ "$ENABLED" == "true" ]] || exit 0
           issue=$(gh issue list --repo "$REPOSITORY" --state open --label agent-backlog --search 'sort:created-asc' --limit 1 --json number --jq '.[0].number // empty')
           [[ -n "$issue" ]] || exit 0
-          gh issue edit "$issue" --repo "$REPOSITORY" --add-label agent-attempted,agent-working --remove-label agent-backlog
+          ISSUE="$issue"
+          status_body=$(printf "<!-- cammelli-bot-status -->\n%s" "Assessing this request in a restricted workspace.")
+          comment_id=$(gh api --paginate "repos/$REPOSITORY/issues/$ISSUE/comments?per_page=100" --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- cammelli-bot-status -->"))) | .id] | .[]' | head -n 1)
+          if [[ -n "$comment_id" ]]; then
+            gh api --method PATCH "repos/$REPOSITORY/issues/comments/$comment_id" -f body="$status_body" >/dev/null
+          else
+            gh api --method POST "repos/$REPOSITORY/issues/$ISSUE/comments" -f body="$status_body" >/dev/null
+          fi
+          gh issue edit "$issue" --repo "$REPOSITORY" --add-label agent-attempted,agent-working --remove-label agent-backlog,agent-needs-review
           if ! gh workflow run public-issue.yml --repo "$REPOSITORY" --ref main -f issue_number="$issue"; then
             gh issue edit "$issue" --repo "$REPOSITORY" --remove-label agent-attempted,agent-working --add-label agent-backlog
+            status_body=$(printf "<!-- cammelli-bot-status -->\n%s" "Queued for restricted assessment.")
+            comment_id=$(gh api --paginate "repos/$REPOSITORY/issues/$ISSUE/comments?per_page=100" --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- cammelli-bot-status -->"))) | .id] | .[]' | head -n 1)
+            if [[ -n "$comment_id" ]]; then
+              gh api --method PATCH "repos/$REPOSITORY/issues/comments/$comment_id" -f body="$status_body" >/dev/null
+            else
+              gh api --method POST "repos/$REPOSITORY/issues/$ISSUE/comments" -f body="$status_body" >/dev/null
+            fi
             exit 1
           fi
-          gh issue comment "$issue" --repo "$REPOSITORY" --body "Cammelli bot is assessing this request in a restricted workspace. Safe changes may become a tested draft pull request; public requests are never auto-merged."
+
+  # Clear labels that no longer describe the issue: a maintainer reply ends "needs review",
+  # and closing ends every in-flight state. agent-attempted and agent-pr stay as history.
+  labels:
+    if: >-
+      (github.event_name == 'issues' && github.event.action == 'closed') ||
+      (github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+    concurrency:
+      group: public-issue-labels-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Drop stale agent labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          stale='["agent-needs-review"]'
+          if [[ "$EVENT" == issues ]]; then
+            stale='["agent-needs-review", "agent-backlog", "agent-working"]'
+          fi
+          remove=$(gh issue view "$ISSUE" --repo "$REPOSITORY" --json labels \
+            --jq "[.labels[].name | select(IN($stale[]))] | join(\",\")")
+          [[ -z "$remove" ]] || gh issue edit "$ISSUE" --repo "$REPOSITORY" --remove-label "$remove"

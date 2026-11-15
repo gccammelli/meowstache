@@ -42,6 +42,7 @@ jobs:
           python3 tools/upstream-lr4.py --verify
           python3 tools/autonomous-android.py self-test
           python3 .github/scripts/public_issue_patch.py --self-test
+          python3 .github/scripts/test_public_issue_workflows.py
           python3 tools/check_codecov.py --self-test
           ./gradlew testDebugUnitTest :shared:koverXmlReportDebug :shared:koverVerifyDebug
 
