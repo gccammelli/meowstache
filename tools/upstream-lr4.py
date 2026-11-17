@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import io
 import json
 import os
 import re
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -28,11 +31,17 @@ def fetch(url: str) -> bytes:
     if parsed.scheme != "https" or parsed.hostname != "codeberg.org":
         raise ValueError(f"refusing unexpected upstream URL: {url}")
     request = urllib.request.Request(url, headers={"User-Agent": "Meowstache-upstream-check/1"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        final = urllib.parse.urlparse(response.geturl())
-        if final.scheme != "https" or final.hostname != "codeberg.org":
-            raise ValueError(f"refusing upstream redirect to: {response.geturl()}")
-        return response.read()
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                final = urllib.parse.urlparse(response.geturl())
+                if final.scheme != "https" or final.hostname != "codeberg.org":
+                    raise ValueError(f"refusing upstream redirect to: {response.geturl()}")
+                return response.read()
+        except (TimeoutError, urllib.error.URLError, http.client.HTTPException):
+            if attempt == 3:
+                raise
+            time.sleep(10 * 2**attempt)
 
 
 def latest_release() -> dict:
