@@ -71,7 +71,7 @@ jobs:
         run: test -n "$OPENAI_API_KEY" || { echo '::error::Add repository secret OPENAI_API_KEY to enable autonomous repairs'; exit 1; }
       - name: Adapt to upstream firmware
         id: repair
-        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
+        uses: openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/upstream-android.md
@@ -154,7 +154,7 @@ jobs:
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
       - name: Independent release review
         id: review
-        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
+        uses: openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .github/codex/upstream-review.md
