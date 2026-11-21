@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.gccammelli.meowstache" + if (providers.gradleProperty("meowstache.testbed").isPresent) ".testbed" else ""
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.1.0"
+        versionCode = 22
+        versionName = "1.2.0"
     }
 
     buildTypes {

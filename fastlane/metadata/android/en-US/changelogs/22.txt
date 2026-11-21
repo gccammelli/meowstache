@@ -1,0 +1,1 @@
+SmartScale chart zooms to the period's weight range, with an every-weighing view. Waste indicators show the full drawer state. New 1.5-day no-visit alert threshold. Correct gender symbol on pet profiles. Fewer API requests on light refreshes. Newer Android build toolchain and dependencies.
