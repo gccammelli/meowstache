@@ -1,0 +1,79 @@
+name: OpenCode fallback
+description: Run the same prompt and JSON schema through OpenCode when the Codex step failed (e.g. quota exceeded).
+inputs:
+  api-key:
+    description: OpenCode Go API key
+    required: true
+  prompt-file:
+    required: true
+  schema-file:
+    required: true
+  read-only:
+    description: Deny file edits (review steps)
+    default: 'false'
+  model:
+    default: opencode-go/glm-5.3
+outputs:
+  final-message:
+    description: The agent's JSON answer, validated against the schema's required keys
+    value: ${{ steps.run.outputs.final-message }}
+runs:
+  using: composite
+  steps:
+    - name: Install OpenCode (no secrets in this step)
+      shell: bash
+      run: npm install -g opencode-ai@1.19.6
+    - name: Run OpenCode
+      id: run
+      shell: bash
+      env:
+        OC_KEY: ${{ inputs.api-key }}
+        OC_PROMPT: ${{ inputs.prompt-file }}
+        OC_SCHEMA: ${{ inputs.schema-file }}
+        OC_READONLY: ${{ inputs.read-only }}
+        OC_MODEL: ${{ inputs.model }}
+      run: |
+        set -euo pipefail
+        test -n "$OC_KEY" || { echo '::error::OPENCODE_API_KEY is not set, no fallback possible'; exit 1; }
+        mkdir -p "$HOME/.local/share/opencode"
+        python3 -I -c 'import json,os; json.dump({"opencode-go":{"type":"api","key":os.environ["OC_KEY"]}}, open(os.path.expanduser("~/.local/share/opencode/auth.json"),"w"))'
+        chmod 600 "$HOME/.local/share/opencode/auth.json"
+        unset OC_KEY
+        if [ "$OC_READONLY" = true ]; then
+          export OPENCODE_PERMISSION='{"edit":"deny","bash":"deny","webfetch":"deny"}'
+        else
+          export OPENCODE_PERMISSION='{"edit":"allow","bash":"allow","webfetch":"deny"}'
+        fi
+        {
+          cat "$OC_PROMPT"
+          printf '\n\nYour final message must be ONLY one JSON object (no markdown fences, no other text) matching this JSON schema:\n'
+          cat "$OC_SCHEMA"
+        } > "$RUNNER_TEMP/oc-prompt.md"
+        opencode run -m "$OC_MODEL" "$(cat "$RUNNER_TEMP/oc-prompt.md")" > "$RUNNER_TEMP/oc-out.txt"
+        python3 -I - "$OC_SCHEMA" "$RUNNER_TEMP/oc-out.txt" <<'PY'
+        import json, os, re, sys, uuid
+        schema = json.load(open(sys.argv[1]))
+        text = open(sys.argv[2]).read()
+        text = re.sub(r"\x1b\[[0-9;]*m", "", text).strip()
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
+        dec = json.JSONDecoder()
+        obj = None
+        for m in re.finditer(r"\{", text):
+            try:
+                cand, _ = dec.raw_decode(text[m.start():])
+            except ValueError:
+                continue
+            if isinstance(cand, dict) and all(k in cand for k in schema["required"]):
+                obj = cand
+                break
+        if obj is None:
+            sys.exit("::error::OpenCode did not return JSON matching the schema")
+        for k in schema["required"]:
+            want = schema["properties"][k]["type"]
+            if {"string": str, "boolean": bool}[want] is not type(obj[k]):
+                sys.exit(f"::error::field {k} has the wrong type")
+        obj = {k: obj[k] for k in schema["properties"]}
+        delim = "EOF_" + uuid.uuid4().hex
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write(f"final-message<<{delim}\n{json.dumps(obj)}\n{delim}\n")
+        PY

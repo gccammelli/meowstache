@@ -98,7 +98,7 @@ jobs:
       contents: read
       issues: read
     outputs:
-      candidate: ${{ steps.agent.outputs.final-message }}
+      candidate: ${{ steps.agent.outputs.final-message || steps.agent_oc.outputs.final-message }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,6 +123,7 @@ jobs:
         run: test -n "$OPENAI_API_KEY" || { echo '::error::Missing OPENAI_API_KEY'; exit 1; }
       - name: Assess and prepare a bounded patch
         id: agent
+        continue-on-error: true
         uses: openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -131,6 +132,15 @@ jobs:
           safety-strategy: drop-sudo
           allow-bots: true
           codex-args: '["--output-schema", ".github/codex/public-issue.schema.json"]'
+      - name: Fall back to OpenCode if Codex failed (quota etc.)
+        id: agent_oc
+        if: steps.agent.outcome == 'failure'
+        uses: ./.github/actions/opencode-fallback
+        with:
+          api-key: ${{ secrets.OPENCODE_API_KEY }}
+          prompt-file: .github/codex/public-issue.md
+          schema-file: .github/codex/public-issue.schema.json
+          read-only: 'false'
       # Codex stays last: only structured output crosses into a fresh runner.
 
   validate:

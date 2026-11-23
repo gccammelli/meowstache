@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     outputs:
-      candidate: ${{ steps.repair.outputs.final-message }}
+      candidate: ${{ steps.repair.outputs.final-message || steps.repair_oc.outputs.final-message }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -71,6 +71,7 @@ jobs:
         run: test -n "$OPENAI_API_KEY" || { echo '::error::Add repository secret OPENAI_API_KEY to enable autonomous repairs'; exit 1; }
       - name: Adapt to upstream firmware
         id: repair
+        continue-on-error: true
         uses: openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -78,6 +79,15 @@ jobs:
           sandbox: workspace-write
           safety-strategy: drop-sudo
           codex-args: '["--output-schema", ".github/codex/patch.schema.json"]'
+      - name: Fall back to OpenCode if Codex failed (quota etc.)
+        id: repair_oc
+        if: steps.repair.outcome == 'failure'
+        uses: ./.github/actions/opencode-fallback
+        with:
+          api-key: ${{ secrets.OPENCODE_API_KEY }}
+          prompt-file: .github/codex/upstream-android.md
+          schema-file: .github/codex/patch.schema.json
+          read-only: 'false'
       # Codex is the final step; its structured patch crosses into a fresh runner.
 
   validate:
@@ -142,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
-      verdict: ${{ steps.review.outputs.final-message }}
+      verdict: ${{ steps.review.outputs.final-message || steps.review_oc.outputs.final-message }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -154,6 +164,7 @@ jobs:
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
       - name: Independent release review
         id: review
+        continue-on-error: true
         uses: openai/codex-action@306c6a196a99dcc6582530c396a19d2672d5e9ec # v1.14
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -161,6 +172,15 @@ jobs:
           sandbox: read-only
           safety-strategy: drop-sudo
           codex-args: '["--output-schema", ".github/codex/review.schema.json"]'
+      - name: Fall back to OpenCode if Codex failed (quota etc.)
+        id: review_oc
+        if: steps.review.outcome == 'failure'
+        uses: ./.github/actions/opencode-fallback
+        with:
+          api-key: ${{ secrets.OPENCODE_API_KEY }}
+          prompt-file: .github/codex/upstream-review.md
+          schema-file: .github/codex/review.schema.json
+          read-only: 'true'
 
   publish:
     needs: [detect, repair, validate, review]
