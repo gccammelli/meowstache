@@ -38,8 +38,41 @@ def bumped(text):
     return text
 
 
+DOC = "docs/upstream-lr4.md"
+DOC_FALLBACK = "\n\n> The agent's release notes were malformed and were dropped; see the workflow run.\n"
+
+
+def sanitized(patch):
+    """Return (text, headers). Model-written diffs are sometimes malformed (a hunk line missing its
+    prefix). Generated files and the version are regenerated independently and the release notes
+    have a fallback, so a chunk for those that does not apply is dropped; any other chunk that does
+    not apply still fails the run."""
+    text = Path(patch).read_text()
+    chunks = re.split(r"(?m)^(?=diff --git )", text)
+    kept, headers = [], set()
+    for chunk in chunks:
+        m = re.match(r"diff --git a/(\S+) b/", chunk)
+        if not m:
+            kept.append(chunk)
+            continue
+        path = m[1]
+        headers.add(path)
+        with tempfile.NamedTemporaryFile("w", suffix=".diff") as f:
+            f.write(chunk)
+            f.flush()
+            err = subprocess.run(["git", "apply", "--check", f.name], cwd=ROOT, capture_output=True, text=True).stderr
+        malformed = bool(err) and not any(k in err for k in ("does not apply", "patch failed", "No such file", "does not exist"))
+        if not (malformed and path in set(GENERATED + [APP, DOC]) or path == DOC and err):
+            kept.append(chunk)
+    return "".join(kept), headers
+
+
 def allowed_patch(patch):
-    records = subprocess.check_output(["git", "apply", "--numstat", "-z", str(patch)], cwd=ROOT).split(b"\0")
+    text, headers = sanitized(patch)
+    with tempfile.NamedTemporaryFile("w", suffix=".diff") as f:
+        f.write(text)
+        f.flush()
+        records = subprocess.check_output(["git", "apply", "--numstat", "-z", f.name], cwd=ROOT).split(b"\0")
     paths = []
     for record in filter(None, records):
         additions, deletions, path = record.decode().split("\t", 2)
@@ -48,12 +81,16 @@ def allowed_patch(patch):
         if path == ADDITIVE_TEST and int(deletions):
             raise ValueError("Existing upstream compatibility assertions may not be removed")
         paths.append(path)
-    if not set(GENERATED + [APP, "docs/upstream-lr4.md"]) <= set(paths):
+    if not set(GENERATED + [APP, DOC]) <= set(paths) | headers:
         raise ValueError("Candidate must update the firmware lock, fixture, mock pin, version, and release notes")
 
 
 def auto_merge_safe(patch):
-    records = subprocess.check_output(["git", "apply", "--numstat", "-z", str(patch)], cwd=ROOT).split(b"\0")
+    text, _ = sanitized(patch)
+    with tempfile.NamedTemporaryFile("w", suffix=".diff") as f:
+        f.write(text)
+        f.flush()
+        records = subprocess.check_output(["git", "apply", "--numstat", "-z", f.name], cwd=ROOT).split(b"\0")
     changed = {record.decode().split("\t", 2)[2] for record in filter(None, records)}
     blocked = sorted(changed & MANUAL_REVIEW)
     if blocked:
@@ -72,7 +109,14 @@ def apply(patch, tag):
     subprocess.run(["python3", "tools/upstream-lr4.py", "--update", "--tag", tag], cwd=ROOT, check=True)
     (ROOT / APP).write_text(bumped((ROOT / APP).read_text()))
     skipped = [f"--exclude={path}" for path in GENERATED + [APP]]
-    subprocess.run(["git", "apply", "--index", *skipped, str(patch)], cwd=ROOT, check=True)
+    text, headers = sanitized(patch)
+    with tempfile.NamedTemporaryFile("w", suffix=".diff") as f:
+        f.write(text)
+        f.flush()
+        subprocess.run(["git", "apply", "--index", *skipped, f.name], cwd=ROOT, check=True)
+    if DOC in headers and f"a/{DOC}" not in text:
+        (ROOT / DOC).write_text((ROOT / DOC).read_text().rstrip("\n") + DOC_FALLBACK)
+        subprocess.run(["git", "add", "--", DOC], cwd=ROOT, check=True)
     for line in git("diff", "--cached", "--raw").decode().splitlines():
         if line.split()[1] != "100644":
             raise ValueError("Candidate must contain regular source files; deletion/symlink changes are blocked")
