@@ -65,20 +65,19 @@ def apply(patch, tag):
     if git("status", "--porcelain", "--untracked-files=no").strip():
         raise ValueError("Candidate validation requires a clean checkout")
     allowed_patch(patch)
-    old_app = (ROOT / APP).read_text()
-    subprocess.run(["git", "apply", "--index", str(patch)], cwd=ROOT, check=True)
+    # The version bump and upstream evidence are regenerated here, independently of the agent,
+    # and are authoritative. The agent's hunks for those files are dropped instead of applied:
+    # a model-written diff of generated files often fails to apply (it did every night from
+    # 2026-11-18), and an agent can't forge evidence this way either.
+    subprocess.run(["python3", "tools/upstream-lr4.py", "--update", "--tag", tag], cwd=ROOT, check=True)
+    (ROOT / APP).write_text(bumped((ROOT / APP).read_text()))
+    skipped = [f"--exclude={path}" for path in GENERATED + [APP]]
+    subprocess.run(["git", "apply", "--index", *skipped, str(patch)], cwd=ROOT, check=True)
     for line in git("diff", "--cached", "--raw").decode().splitlines():
         if line.split()[1] != "100644":
             raise ValueError("Candidate must contain regular source files; deletion/symlink changes are blocked")
-    if (ROOT / APP).read_text() != bumped(old_app):
-        raise ValueError("Agent modified Android build configuration beyond the expected version bump")
-    # Regenerate from Codeberg independently; an agent cannot forge its own upstream evidence.
-    expected = {path: (ROOT / path).read_bytes() for path in GENERATED}
-    subprocess.run(["python3", "tools/upstream-lr4.py", "--update", "--tag", tag], cwd=ROOT, check=True)
-    for path, content in expected.items():
-        if (ROOT / path).read_bytes() != content:
-            raise ValueError(f"Candidate changed generated upstream evidence: {path}")
-    print("Candidate patch scope, version and upstream evidence verified")
+    subprocess.run(["git", "add", "--", *GENERATED, APP], cwd=ROOT, check=True)
+    print("Candidate patch scope applied; version and upstream evidence regenerated independently")
 
 
 def self_test():
