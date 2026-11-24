@@ -38,11 +38,12 @@ def bumped(text):
     return text
 
 
+DROPPED = []
 DOC = "docs/upstream-lr4.md"
 DOC_FALLBACK = "\n\n> The agent's release notes were malformed and were dropped; see the workflow run.\n"
 
 
-def sanitized(patch):
+def sanitized(patch, drop_source=False):
     """Return (text, headers). Model-written diffs are sometimes malformed (a hunk line missing its
     prefix). Generated files and the version are regenerated independently and the release notes
     have a fallback, so a chunk for those that does not apply is dropped; any other chunk that does
@@ -62,7 +63,11 @@ def sanitized(patch):
             f.flush()
             err = subprocess.run(["git", "apply", "--check", f.name], cwd=ROOT, capture_output=True, text=True).stderr
         malformed = bool(err) and not any(k in err for k in ("does not apply", "patch failed", "No such file", "does not exist"))
-        if not (malformed and path in set(GENERATED + [APP, DOC]) or path == DOC and err):
+        stale_source = drop_source and bool(err) and path not in set(GENERATED + [APP, DOC, ADDITIVE_TEST])
+        if stale_source:
+            print(f"warning: dropped a source hunk that does not apply: {path}")
+            DROPPED.append(path)
+        if not (malformed and path in set(GENERATED + [APP, DOC]) or path == DOC and err or stale_source):
             kept.append(chunk)
     return "".join(kept), headers
 
@@ -109,13 +114,20 @@ def apply(patch, tag):
     subprocess.run(["python3", "tools/upstream-lr4.py", "--update", "--tag", tag], cwd=ROOT, check=True)
     (ROOT / APP).write_text(bumped((ROOT / APP).read_text()))
     skipped = [f"--exclude={path}" for path in GENERATED + [APP]]
-    text, headers = sanitized(patch)
+    # A source hunk that does not apply is dropped too (the agent wrote it against stale context);
+    # the contract tests, the emulator smoke test and the independent review still gate the PR.
+    text, headers = sanitized(patch, drop_source=True)
     with tempfile.NamedTemporaryFile("w", suffix=".diff") as f:
         f.write(text)
         f.flush()
         subprocess.run(["git", "apply", "--index", *skipped, f.name], cwd=ROOT, check=True)
     if DOC in headers and f"a/{DOC}" not in text:
         (ROOT / DOC).write_text((ROOT / DOC).read_text().rstrip("\n") + DOC_FALLBACK)
+        subprocess.run(["git", "add", "--", DOC], cwd=ROOT, check=True)
+    if DROPPED:
+        note = "\n\n> Maintainer review needed: the agent's changes to " + ", ".join(sorted(set(DROPPED))) + \
+               " did not apply and were dropped; the upstream evidence and version were regenerated only.\n"
+        (ROOT / DOC).write_text((ROOT / DOC).read_text().rstrip("\n") + note)
         subprocess.run(["git", "add", "--", DOC], cwd=ROOT, check=True)
     for line in git("diff", "--cached", "--raw").decode().splitlines():
         if line.split()[1] != "100644":
