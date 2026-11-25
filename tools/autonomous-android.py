@@ -63,10 +63,13 @@ def sanitized(patch, drop_source=False):
             f.flush()
             err = subprocess.run(["git", "apply", "--check", f.name], cwd=ROOT, capture_output=True, text=True).stderr
         malformed = bool(err) and not any(k in err for k in ("does not apply", "patch failed", "No such file", "does not exist"))
-        stale_source = drop_source and bool(err) and path not in set(GENERATED + [APP, DOC, ADDITIVE_TEST])
+        # A corrupt chunk (not parseable at all) can never be applied, so it is dropped for every
+        # path and every caller; a well-formed chunk that merely does not apply is dropped only by apply().
+        stale_source = bool(err) and path not in set(GENERATED + [APP, DOC, ADDITIVE_TEST]) and (malformed or drop_source)
         if stale_source:
-            print(f"warning: dropped a source hunk that does not apply: {path}")
-            DROPPED.append(path)
+            print(f"warning: dropped a source hunk that is corrupt or does not apply: {path}")
+            if path not in DROPPED:
+                DROPPED.append(path)
         if not (malformed and path in set(GENERATED + [APP, DOC]) or path == DOC and err or stale_source):
             kept.append(chunk)
     return "".join(kept), headers
