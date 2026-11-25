@@ -141,6 +141,17 @@ def apply(patch, tag):
     print("Candidate patch scope applied; version and upstream evidence regenerated independently")
 
 
+def sanitize_for_review(patch):
+    """Rewrite the candidate as the patch that validate/publish will actually apply, so the
+    independent review judges what lands. Dropped hunks are listed in a preamble git ignores."""
+    text, _ = sanitized(patch, drop_source=True)
+    dropped = sorted(set(DROPPED))
+    preamble = ("NOTE: hunks that were corrupt or did not apply were dropped before review"
+                + (": " + ", ".join(dropped) if dropped else "")
+                + ". Version, upstream evidence and (if its hunk was bad) release notes are regenerated independently.\n")
+    Path(patch).write_text(preamble + text)
+
+
 def self_test():
     value = 'versionCode = 20\nversionName = "1.1.0-beta16"\n'
     assert bumped(value) == 'versionCode = 21\nversionName = "1.1.0-beta17"\n'
@@ -196,6 +207,8 @@ def main():
     check = sub.add_parser("apply")
     check.add_argument("patch", type=Path)
     check.add_argument("--tag", required=True)
+    san = sub.add_parser("sanitize")
+    san.add_argument("patch", type=Path)
     patch_check = sub.add_parser("check-patch")
     patch_check.add_argument("patch", type=Path)
     merge_check = sub.add_parser("auto-merge-safe")
@@ -205,6 +218,8 @@ def main():
         (ROOT / APP).write_text(bumped((ROOT / APP).read_text()))
     elif args.action == "apply":
         apply(args.patch.resolve(), args.tag)
+    elif args.action == "sanitize":
+        sanitize_for_review(args.patch.resolve())
     elif args.action == "check-patch":
         allowed_patch(args.patch.resolve())
     elif args.action == "auto-merge-safe":

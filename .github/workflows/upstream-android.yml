@@ -162,6 +162,8 @@ jobs:
         env:
           CANDIDATE: ${{ needs.repair.outputs.candidate }}
         run: python3 -c 'import json,os,pathlib; pathlib.Path("candidate.diff").write_text(json.loads(os.environ["CANDIDATE"])["patch"])'
+      - name: Review what will actually land (drop corrupt hunks)
+        run: python3 tools/autonomous-android.py sanitize candidate.diff
       - name: Independent release review
         id: review
         continue-on-error: true
