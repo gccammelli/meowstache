@@ -24,7 +24,16 @@ shared/src/commonTest/kotlin/io/github/gccammelli/meowstache/UpstreamCompatibili
 Do not weaken existing assertions. If the necessary fix exceeds these bounds,
 report the blocker and fail; a human can expand scope for that release.
 
-Write docs/upstream-lr4.md explaining the firmware version, user-facing changes,
+MANDATORY, and the first thing to do: docs/upstream-lr4.md MUST be in your patch.
+The workflow rejects any candidate without it, whatever the code quality. Rewrite
+it for the new release (replace the old baseline text, do not append to it) before
+you touch code, and update it as you go. For every user-visible upstream change
+(new/renamed entities, new settings, removed or reduced ranges), state whether it
+is supported or deferred; a reduced maximum or removed option needs migration notes
+for users whose saved value is now out of range. Silence on a change counts as a
+blocker.
+
+docs/upstream-lr4.md explains the firmware version, user-facing changes,
 breaking changes/migration steps (including upstream data resets), which new
 features are supported, and any deferred features. This file becomes release/PR
 notes, so do not include local paths, personal names, credentials, device ids or
@@ -39,3 +48,8 @@ release notes/new tests. Use `git add --intent-to-add` on allowed new files befo
 capturing `git diff --binary HEAD`. Never omit pre-existing workflow-generated
 changes from the patch. If blocked, return an empty patch and explain why.
 The independent workflow will validate the patch and run Android tests before merging.
+
+Final checklist before you return: `git diff --binary HEAD --stat` must list
+docs/upstream-lr4.md and app/build.gradle.kts, and the doc must name the new
+firmware version and cover every upstream breaking change. If either is missing,
+fix it first. Never return a patch without the release notes.
